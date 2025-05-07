@@ -1,0 +1,11 @@
+name: stix-mwa
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - conda-lock=2.5
+
+  # Actual dependencies
+  - jupyterlab=4.4
+platforms:
+  - linux-64
