@@ -2,10 +2,14 @@ name: stix-mwa
 channels:
   - conda-forge
 dependencies:
-  - python=3.12
+  - python=3.11
   - conda-lock=2.5
 
   # Actual dependencies
   - jupyterlab=4.4
+  - casacore=3.7
+  - python-casacore=3.7
+  - astropy=7.0
+  - pyerfa=2.0.1.1
 platforms:
   - linux-64
