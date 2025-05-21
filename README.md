@@ -5,8 +5,9 @@ with [MWA](https://www.mwatelescope.org/) data.
 
 ## Getting started
 
+Make sure you have a working [WSClean installation](https://wsclean.readthedocs.io/en/latest/installation.html).
 Ensure you have Conda or a compatible tool
-installed ([Micromamba](https://mamba.readthedocs.io/en/latest/user_guide/micromamba.html) recommended):
+installed ([Micromamba](https://mamba.readthedocs.io/en/latest/user_guide/micromamba.html) recommended).
 
 First, create the environment from the lock file:
 
@@ -20,7 +21,7 @@ Then, activate it:
 micromamba activate stix-mwa
 ```
 
-Finally, run the desired Python script or Jupyter notebook:
+Finally, run the desired Python script or Jupyter notebook.
 
 > **Micromamba & PyCharm** <br>
 > PyCharm currently [does not support Mamba](https://youtrack.jetbrains.com/issue/PY-58703/Setting-interpreter-to-mamba-causes-PyCharm-to-stop-accepting-run-configurations).
