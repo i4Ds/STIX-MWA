@@ -21,7 +21,11 @@ Then, activate it:
 micromamba activate stix-mwa
 ```
 
-Finally, run the desired Python script or Jupyter notebook.
+Finally, run the desired Python script or start Jupyter Lab:
+
+```sh
+jupyter lab
+```
 
 > **Micromamba & PyCharm** <br>
 > PyCharm currently [does not support Mamba](https://youtrack.jetbrains.com/issue/PY-58703/Setting-interpreter-to-mamba-causes-PyCharm-to-stop-accepting-run-configurations).
