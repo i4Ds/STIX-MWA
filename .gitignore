@@ -2,3 +2,7 @@
 /.ipynb_checkpoints/
 __pycache__/
 /tmp/
+/wsclean/
+/vids/
+z
+*.log
