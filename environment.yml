@@ -1,15 +1,54 @@
-name: stix-mwa
+name: stix-mwa5
 channels:
   - conda-forge
 dependencies:
-  - python=3.11
+  - python=3.10
   - conda-lock=2.5
-
-  # Actual dependencies
-  - jupyterlab=4.4
-  - casacore=3.7
-  - python-casacore=3.7
-  - astropy=7.0
+  - numpy
+  - pandas
+  - scipy
+  - matplotlib
+  - casacore=3.6.1
+  - astropy>=5,<7 
   - pyerfa=2.0.1.1
+  - ipykernel
+  - sunpy
+  - spiceypy
+  - aiohttp
+  - cfitsio>=4.5
+  - hdf5=1.14.4
+  - boost
+  - boost-cpp
+  - rootutils
+  - ffmpeg
+  - gsl
+  - cmake
+  - flex
+  - astral
+  - bison
+  - make
+  - fftw
+  - libblas
+  - libcblas
+  - lapack
+  - readline
+  - ncurses
+  - wcslib
+  - xerces-c
+  - curl
+  - pkg-config
+  - pip
+  - pip:
+      - stixdcpy==3.0
+      - wandb==0.19.1
+      - requests
+      - requests-toolbelt
+      - beautifulsoup4
+      - pytz
+      - pyvo
+      - ruamel-yaml
+      - ruamel-yaml-clib
+      - websocket-client
 platforms:
   - linux-64
+

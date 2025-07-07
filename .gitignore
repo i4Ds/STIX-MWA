@@ -2,7 +2,13 @@
 /.ipynb_checkpoints/
 __pycache__/
 /tmp/
-/wsclean/
-/vids/
 z
 *.log
+.env
+files/
+results/
+src/_other_functions/
+src/manta-ray-client
+src/wsclean/
+src/casacore/
+src/tmp/

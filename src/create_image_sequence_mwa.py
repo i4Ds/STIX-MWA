@@ -20,7 +20,7 @@ OBSERVATION_PATH = Path(f"/mnt/nas05/data02/tschai/{OBSERVATION}_basic_calibrati
 IMAGE_SIZE_PIXELS = 2048
 SCALE_ARCSEC_PER_PIXEL = 5
 WORK_DIR = Path.cwd() / "tmp"
-FINAL_VIDEO_PATH = Path.cwd() / "vids" / f"{OBSERVATION}_stokes_i.mp4"
+FINAL_VIDEO_PATH = Path.cwd().parent / "results" / "mwa_vids" / f"{OBSERVATION}_stokes_i.mp4"
 
 
 def main():
