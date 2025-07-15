@@ -37,6 +37,7 @@ dependencies:
   - xerces-c
   - curl
   - pkg-config
+  - astroquery
   - pip
   - pip:
       - stixdcpy==3.0
@@ -49,6 +50,7 @@ dependencies:
       - ruamel-yaml
       - ruamel-yaml-clib
       - websocket-client
+      - dp3
 platforms:
   - linux-64
 

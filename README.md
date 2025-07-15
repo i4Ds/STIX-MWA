@@ -11,7 +11,6 @@ This repository provides tools for analyzing and comparing data from [STIX](http
     - [casacore](#casacore)
     - [WSClean](#wsclean)
 - [Environment Variables](#environment-variables)
-- [License](#license)
 - [Contact](#contact)
 
 ## Getting Started
@@ -33,8 +32,10 @@ Some required libraries must be installed manually.
 ```bash
 git clone https://github.com/ICRAR/manta-ray-client.git
 cd manta-ray-client
-python3 setup.py install
+pip install -e .
 ```
+
+Then replace the api.py in manta-ray-client/mantaray/api with api.py from src/helper_functions.
 
 #### casacore
 ```bash
@@ -67,6 +68,12 @@ cmake .. \
   -DBUILD_TESTING=OFF \
   -DCMAKE_CXX_FLAGS="-march=x86-64 -mtune=generic"
 cmake --build . -j$(nproc)
+```
+
+After sucessful casacore instalation, install casatools and casatasks with pip:
+```bash
+pip install --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple casatools
+pip install --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple casatasks
 ```
 
 Then export the following paths (update to your install locations):

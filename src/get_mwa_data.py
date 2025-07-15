@@ -6,6 +6,16 @@ from helper_functions.utils import get_root_path_to_data
 from helper_functions.mwa_asvo import create_jobs, process_jobs
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+import inspect, websocket._abnf as _abnf
+
+if 'skip_utf8_validation' not in inspect.signature(_abnf.ABNF.validate).parameters:
+    # old websocket-client (<1.0) – wrap, but DON’T touch rsv1
+    _orig = _abnf.ABNF.validate
+    def _patched(self, *a, **kw):
+        # preserve rsv1, only ignore the extra kwarg
+        self.rsv2 = self.rsv3 = 0
+        return _orig(self)
+    _abnf.ABNF.validate = _patched
 
 
 def main():
@@ -13,7 +23,8 @@ def main():
     download mwa data based on provided observation ids or flares matched with mwa metadata.
     """
 
-    download_observations_by_flare_id = True
+    download_observations_by_flare_id = False 
+
     if download_observations_by_flare_id:
         flare_csv = pd.read_csv('../files/flares_recorded_by_mwa_no_time_correction.csv')
         all_files = os.listdir('../results/plots/spectrograms_and_light_curves/time_not_corrected')
@@ -26,14 +37,14 @@ def main():
 
             observation_ids = ast.literal_eval(flare_csv[flare_csv['flare_id'] == int(flare_id)]['obs_ids'].values[0])
             logging.info(f"Flare {flare_id} has {observation_ids} observations.")
-    
     else:
         files_path = '../files'
-        observation_ids = ['1126847624']  # set to [] to use flare list
-        observation_ids = []
+        observation_ids = ['1385093776', '1385094016', '1385094256', '1385094496', '1385094736', '1385119816']  # set to [] to use flare list
+        #observation_ids = ['1387506256', '1387506016', '1387539736']  # set to [] to use flare list
+        # observation_ids = []
 
-    path_to_data = get_root_path_to_data() / 'metadata'
-    job_type = 'v'  # 'c' for conversion, 'v' for voltage
+    path_to_data = get_root_path_to_data()
+    job_type = 'c'  # 'c' for conversion, 'v' for voltage
 
     if observation_ids:
         download_by_obs_ids(observation_ids, job_type, path_to_data)
@@ -82,8 +93,6 @@ def download_mwa_data(obs_source, path_to_data, job_type, avg_time_res=4, avg_fr
     - avg_freq_res: frequency averaging resolution
     - is_flare_row: set to True if passing a flare row
     """
-     # a workaround to avoid an error
-    change_websocket_abnf()
     
     if is_flare_row:
         obs_ids = ast.literal_eval(obs_source['obs_ids'])
@@ -112,25 +121,9 @@ def download_mwa_data(obs_source, path_to_data, job_type, avg_time_res=4, avg_fr
         process_jobs(jobs_to_submit)
 
 
-
-def change_websocket_abnf():
-    """
-    This is a workaround to avoid the error "websocket._abnf.ABNF.validate() got an unexpected keyword argument 'skip_utf8_validation'"
-    when using the websocket library.
-    """
-    import websocket._abnf
-    original_validate = websocket._abnf.ABNF.validate
-    def patched_validate(self, skip_utf8_validation):
-        self.rsv1 = 0
-        self.rsv2 = 0
-        self.rsv3 = 0
-        return  # skip everything else
-    websocket._abnf.ABNF.validate = patched_validate
-
-
 def get_downloaded_obs_ids(root_path):
     downloads = os.listdir(root_path)
-    return {int(d.split("_")[0]) for d in downloads}
+    return {int(piece) for d in downloads for piece in [d.split("_")[0]] if piece} 
 
 
 if __name__ == "__main__":

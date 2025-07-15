@@ -5,6 +5,7 @@ import logging
 import tarfile
 import tempfile
 import numpy as np
+from casacore.tables import table, taql
 from helper_functions.utils import safe_parse_time
 
 
