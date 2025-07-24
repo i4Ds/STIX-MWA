@@ -4,6 +4,7 @@ import numpy as np
 from casacore.tables import table
 
 log = logging.getLogger(__name__)
+from helper_functions.utils import get_observation_path, get_metafits_files
 
 
 def write_point_srclist(ms_path: Path, flux_jy: float, out_yaml: Path):
@@ -25,7 +26,7 @@ calibrator:
     log.info("wrote sky model → %s", out_yaml)
 
 
-def run_di_calibrate(cal_ms: Path, flux_jy: float, sol_path: Path):
+def run_di_calibrate(cal_ms: Path, flux_jy: float, sol_path: Path, work_root):
     """derive direction-independent gains"""
     yaml_path = sol_path.with_suffix(".yaml")
     write_point_srclist(cal_ms, flux_jy, yaml_path)
@@ -34,7 +35,6 @@ def run_di_calibrate(cal_ms: Path, flux_jy: float, sol_path: Path):
         "MWA_BEAM_FILE",
         str(Path.home() / "local/share/mwa_full_embedded_element_pattern.h5")
     )
-    os.environ["OMP_NUM_THREADS"] = "4"
 
     subprocess.run(
         ["hyperdrive", "di-calibrate",
@@ -44,8 +44,7 @@ def run_di_calibrate(cal_ms: Path, flux_jy: float, sol_path: Path):
         check=True
     )
 
-
-def apply_solutions(raw_ms: Path, sol_path: Path) -> Path:
+def apply_solutions(raw_ms: Path, sol_path: Path, work_root) -> Path:
     """apply gains and return new *_cal.ms path"""
     out_ms = raw_ms.with_name(f"{raw_ms.stem}_cal{raw_ms.suffix}")
     if out_ms.exists():

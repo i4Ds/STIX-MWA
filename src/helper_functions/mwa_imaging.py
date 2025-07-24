@@ -38,9 +38,18 @@ def run_wsclean(ms_path: Path, interval_count: int, work_dir: Path):
         "-intervals-out", str(interval_count),
         "-size", str(image_size_pixels), str(image_size_pixels),
         "-scale", f"{scale_arcsec_per_pixel}asec",
-        "-niter", "0",
         "-pol", "I",
         "-channels-out", "1",
+
+        # CLEAN settings
+        "-niter", "5000",
+        "-auto-mask", "3",
+        "-auto-threshold", "0.7",
+        "-multiscale",
+        "-mgain", "0.8",
+        "-weight", "briggs", "0",
+        "-apply-primary-beam",
+
         str(ms_path),
     ]
     env = dict(os.environ, OPENBLAS_NUM_THREADS="1")

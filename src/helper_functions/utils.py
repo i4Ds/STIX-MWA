@@ -7,6 +7,8 @@ from matplotlib.dates import AutoDateLocator, ConciseDateFormatter
 import tarfile
 import tempfile
 import re
+import shutil, time, stat
+import logging
 
  # setup project root and environment variables immediately
 rootutils.setup_root(Path(__file__).resolve(), indicator=".project-root", pythonpath=True)
@@ -35,39 +37,64 @@ def set_x_ticks(ax):
 
 def get_observation_path(observation_id):
     root = get_root_path_to_data()
-    candidates = list(root.glob(f"{observation_id}_*_ms.tar"))
+    candidates = [p for p in root.glob(f"{observation_id}*.tar") if p.is_file()]
     if not candidates:
         raise FileNotFoundError(f"no archive found for {observation_id} in {root}")
     return candidates[0]
 
 
-def get_ms_files(fname):
-    """
-    extracts ms files from a tar archive and returns them sorted by channel number if available.
-    """
-    temp_dir = tempfile.mkdtemp()
-    with tarfile.open(fname, 'r') as tar:
-        ms_files = [member for member in tar.getmembers() if member.name.endswith('.ms')]
-        if not ms_files:
-            raise ValueError("No .ms files found in the tar archive.")
-        else:
-            tar.extractall(path=temp_dir)
+def get_ms_files(tar_path, scratch_root):
+    """extract a *.ms from *tar_path* and return (ms_path, tmp_dir)"""
 
-     # sort by the channel number extracted from the filename
-    def _extract_channel_or_fallback(name):
-        """
-        extracts channel number from filename or falls back to a large number to push it to the end
-        """
-        match = re.search(r'ch(\d+)(?:-|\.ms)', name)
-        if match:
-            return int(match.group(1))
-        else:
-            # fallback: extract the full number if filename is like '1355089520.ms'
-            match = re.search(r'(\d+)', name)
-            if match:
-                return int(match.group(1))
-            else:
-                return float('inf')  # put files without any number last
+    with tarfile.open(tar_path, "r") as tar:
+        # find the first directory that ends with '.ms'
+        ms_names = sorted(
+            [m for m in tar.getmembers()
+            if m.isdir() and m.name.endswith(".ms")],
+            key=lambda s: int(s.name.split("ch")[1].split("-")[0]),   # grab first channel as int
+        )
+        if not ms_names:
+            raise ValueError("no .ms directory found in archive")
 
-    ms_files = sorted(ms_files, key=lambda f: _extract_channel_or_fallback(f.name))
-    return ms_files, temp_dir
+        logging.info(ms_names)
+        
+        ms_dirinfo = ms_names[0]
+        logging.info(f"extracting {ms_dirinfo.name}")
+
+        # collect that directory plus every member under it
+        prefix = ms_dirinfo.name.rstrip("/") + "/"
+        members = [m for m in tar.getmembers()
+                   if m.name == ms_dirinfo.name or m.name.startswith(prefix)]
+                   
+        # create a temporary workspace on scratch_root
+        tmp_dir = tempfile.mkdtemp(dir=scratch_root)
+        tar.extractall(path=tmp_dir, members=members)
+
+    return Path(tmp_dir) / ms_dirinfo.name.lstrip("./")
+
+
+
+def get_metafits_files(tar_path, scratch_root):
+    """extract a *.metafits from *tar_path* and return (ms_path, tmp_dir)"""
+
+    with tarfile.open(tar_path, "r") as tar:
+        # find the first directory that ends with '.ms'
+        ms_names = [m for m in tar.getmembers() if m.name.endswith(".metafits")]
+        if not ms_names:
+            raise ValueError("no .metafits directory found in archive")
+
+        logging.info(ms_names)
+        
+        ms_dirinfo = ms_names[0]
+        logging.info(f"extracting {ms_dirinfo.name}")
+
+        # collect that directory plus every member under it
+        prefix = ms_dirinfo.name.rstrip("/") + "/"
+        members = [m for m in tar.getmembers()
+                   if m.name == ms_dirinfo.name or m.name.startswith(prefix)]
+                   
+        # create a temporary workspace on scratch_root
+        tmp_dir = tempfile.mkdtemp(dir=scratch_root)
+        tar.extractall(path=tmp_dir, members=members)
+
+    return Path(tmp_dir) / ms_dirinfo.name.lstrip("./")

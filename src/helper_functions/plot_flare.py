@@ -4,8 +4,7 @@ from matplotlib.gridspec import GridSpec
 from helper_functions.utils import get_root_path_to_data
 from helper_functions.mwa import plot_mwa_from_flare_row, plot_mwa_from_obs_ids, plot_mwa_light_curve
 from helper_functions.stix import plot_stix_light_curve, get_position
-from helper_functions.utils import safe_parse_time
-from helper_functions.ecallisto import get_ecallisto_data
+from helper_functions.ecallisto import plot_ecallistio
 
 
 def plot_flare(save_path, row=None, obs_ids=None):
@@ -92,29 +91,3 @@ def plot_object(ax, x, y, label, color, size, marker='o', zorder=3):
     """
     ax.scatter(x, y, s=size, c=color, label=label, edgecolors='black', marker=marker, zorder=zorder)
     ax.text(x, y, label, ha='center', va='center', zorder=zorder+1)
-
-
-def plot_ecallistio(row, ax, fig, gs):
-    """ 
-    plots e-Callisto spectrogram for Australia-ASSA
-    """
-    flare_start = safe_parse_time(row['mwa_start_UTC'])
-    flare_end = safe_parse_time(row['mwa_end_UTC'])
-
-    data, time_axis, freq_axis = get_ecallisto_data(flare_start, flare_end)
-    if data is not None:
-        im = ax.imshow(
-            data,
-            aspect='auto',
-            origin='lower',
-            extent=[time_axis[0].to_datetime(), time_axis[-1].to_datetime(), freq_axis[0], freq_axis[-1]],
-        )
-        set_x_ticks(ax)
-        ax.set_title("e-Callisto spectrogram for Australia-ASSA")
-        ax.set_xlabel('Time [UTC]')
-        ax.set_ylabel('Frequency [MHz]')
-        ax.set_xlim(safe_parse_time(flare_start), safe_parse_time(flare_end))
-        cbar_ax = fig.add_subplot(gs[4, 1])
-        plt.colorbar(im, cax=cbar_ax)
-    else:
-        ax.text(0.5, 0.5, 'No matching e-CALLISTO files found', ha='center', va='center')

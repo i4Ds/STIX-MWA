@@ -14,7 +14,7 @@ from mantaray.scripts.mwa_client import submit_jobs, status_func, download_func,
 def create_jobs(observations, job_type='c', time_resolution=4, freq_resolution=160):
     """
     creates a list of job specifications for the mwa asvo jobs based on observation ids
-    job_type: 'c' for conversion, 'v' for voltage
+    job_type: 'c' for conversion, 'v' for voltage, 'm' for metafits-only
     """
     if job_type == 'c':
         return [
@@ -26,6 +26,7 @@ def create_jobs(observations, job_type='c', time_resolution=4, freq_resolution=1
                     'avg_time_res': time_resolution,
                     'avg_freq_res': freq_resolution,
                     'output': 'ms',
+                    #'apply_di_cal': 'true'
                 }
             )
             for obs_id in observations
@@ -38,6 +39,18 @@ def create_jobs(observations, job_type='c', time_resolution=4, freq_resolution=1
                     'obs_id': obs_id,
                     'job_type': 'v',
                 }
+            )
+            for obs_id in observations
+        ]
+    elif job_type == "m":                   # **NEW**: metafits-only
+        return [
+            (
+                "submit_download_job_direct",
+                {
+                    "obs_id":        obs_id,
+                    "job_type":      "d",          # download job
+                    "download_type": "vis_meta",   # metafits + flags only
+                },
             )
             for obs_id in observations
         ]

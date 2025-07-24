@@ -2,34 +2,38 @@ from pathlib import Path
 import shutil, logging, datetime, os
 import numpy as np
 from astropy.time import Time
-from helper_functions.utils import get_observation_path, get_ms_files
+from helper_functions.utils import get_observation_path, get_ms_files, get_root_path_to_data
 import helper_functions.mwa_imaging as imaging
 import helper_functions.calibration as cal
+from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger(__name__)
 
 
-# -------------------- parameters to edit --------------------
 runs = [
-    # imaging only
     {
         "flare_id":        "1126847624",
-        "observation_ids": ["1126847624"],
-        "calibration_id":  None,
-        "calibrator_flux_jy": 0.0,
-    },
-    # full calibration + imaging
-    {
-        "flare_id":        "1126847624",
-        "observation_ids": ["1126847624"],
-        "calibration_id":  "1126854528",
-        "calibrator_flux_jy": 1670.0,
+        "observation_ids": ['1126847624'],
+        "calibration_id":  "1126832808",            # set to None for no calibration
+        "calibrator_flux_jy": 500.0,                 # default 1670.0
     },
 ]
+"""
+runs = [
+    {
+        "flare_id":        "14_2312250224",
+        "observation_ids": ['1387506016', '1387506256'],
+        "calibration_id":  "1387485312",            # set to None for no calibration
+        "calibrator_flux_jy": 500.0,                 # default 1670.0
+    },
+]
+"""
+print_ = 'in wsclean i included percentiles for cutting as well as cmd "-niter", "5000", "-auto-mask", "3","-auto-threshold","3","-weight", "briggs", "0", "-apply-primary-beam"'
 
- # roots
-work_base = Path.cwd() / "tmp"
+
+root_path_to_data = get_root_path_to_data()
+work_base = Path(root_path_to_data) / "tmp"
 out_base  = Path.cwd().parent / "results" / "mwa_vids"
 
 
@@ -42,26 +46,25 @@ def run_job(cfg: dict, tag: str):
 
     work_root = work_base / tag
     work_root.mkdir(parents=True, exist_ok=True)
-    tmp_dirs: list[str] = []
 
-     # optional calibration
-    if calibration_id:
-        sol_path = work_root / f"{tag}_cal_sols.fits"
-        cal_ms, cal_tmp = fetch_ms(calibration_id)
-        tmp_dirs.append(cal_tmp)
-        cal.run_di_calibrate(cal_ms, flux_jy, sol_path)
-    else:
-        sol_path = None
-
-     # imaging for each science ms
-    cubes, axes = [], []
     try:
-        for obs_id in observation_ids:
-            raw_ms, tmp = fetch_ms(obs_id)
-            tmp_dirs.append(tmp)
 
+        # optional calibration
+        if calibration_id:
+            sol_path = work_root / f"{tag}_cal_sols.fits"
+            cal_ms = get_ms_files(get_observation_path(calibration_id), work_root)
+            cal.run_di_calibrate(cal_ms, flux_jy, sol_path, work_root)
+        else:
+            sol_path = None
+
+        # imaging for each science ms
+
+        cubes, axes = [], []
+
+        for obs_id in observation_ids:
+            raw_ms = get_ms_files(get_observation_path(obs_id), work_root)
             ms_in = (
-                cal.apply_solutions(raw_ms, sol_path)
+                cal.apply_solutions(raw_ms, sol_path, work_root)
                 if sol_path else raw_ms
             )
 
@@ -76,19 +79,11 @@ def run_job(cfg: dict, tag: str):
             format="jd", scale="utc"
         )
         order = np.argsort(all_times.jd)
-        video_path = out_base / f"{flare_id}_{tag}_stokes_i.mp4"
+        video_path = out_base / f"{flare_id}_{tag}.mp4"
         imaging.animate_stack(stack[order], all_times[order], video_path)
         log.info("finished → %s", video_path)
     finally:
-        shutil.rmtree(work_base, ignore_errors=True)
-        for d in tmp_dirs:
-            shutil.rmtree(d, ignore_errors=True)
-
-
-def fetch_ms(obs_id: str):
-    """copy an mwa measurement set to a temp dir and return (ms_path, tmp_dir)"""
-    ms_files, tmp_dir = get_ms_files(get_observation_path(obs_id))
-    return Path(tmp_dir) / ms_files[0].name, tmp_dir
+        shutil.rmtree(work_root, ignore_errors=True)
 
 
 def process_single_obs(obs_id: str, ms_path: Path, work_root: Path):
@@ -111,6 +106,9 @@ if __name__ == "__main__":
     for idx, cfg in enumerate(runs, 1):
         tag = f"{idx}_{timestamp}"
         log.info("starting job %d / %d (tag %s)", idx, len(runs), tag)
+        log.info(print_)
+        for key, value in cfg.items():
+            log.info("cfg %-15s : %s", key, value)   # %-15s left-aligns keys into a tidy column
         run_job(cfg, tag)
 
     log.info("all jobs completed.")
