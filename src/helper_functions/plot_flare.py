@@ -5,6 +5,7 @@ from helper_functions.utils import get_root_path_to_data
 from helper_functions.mwa import plot_mwa_from_flare_row, plot_mwa_from_obs_ids, plot_mwa_light_curve
 from helper_functions.stix import plot_stix_light_curve, get_position
 from helper_functions.ecallisto import plot_ecallistio
+import logging
 
 
 def plot_flare(save_path, row=None, obs_ids=None):
@@ -12,25 +13,48 @@ def plot_flare(save_path, row=None, obs_ids=None):
     plots spectrograms using either manually specified observation IDs or flare metadata
     """
     fig, axes, cbar_gs = create_figure_and_axes(subplots=5)
-    try:
-        if row is not None:
+    time_axis = []
+    if row is not None:
+        try:
             plot_stix_light_curve(row, axes[0], energy_range=(0, 4))
+        except Exception as e:
+            logging.info(f"Error plotting STIX light curve: {e}")
+            axes[0].text(0.5, 0.5, 'STIX data not available', ha='center', va='center')
+        try:
             spec, time_axis = plot_mwa_from_flare_row(row, axes[1], fig, cbar_gs, get_root_path_to_data())
-        elif obs_ids is not None:
+        except Exception as e:
+            logging.info(f"Error plotting MWA data: {e}")
+            axes[1].text(0.5, 0.5, 'MWA spectrogram not available', ha='center', va='center')
+    elif obs_ids is not None:
+        try:
             spec, time_axis = plot_mwa_from_obs_ids(obs_ids, axes, cbar_gs, fig, get_root_path_to_data())
-        else:
-            raise ValueError("Either row or obs_ids must be provided.")
+        except Exception as e:
+            logging.info(f"Error plotting MWA data: {e}")
+            axes[1].text(0.5, 0.5, 'MWA spectrogram not available', ha='center', va='center')
+    else:
+        raise ValueError("Either row or obs_ids must be provided.")
 
-        if not time_axis:
-            return True
+    if not time_axis:
+        return True
 
+    try:
         plot_mwa_light_curve(spec, time_axis, axes[2], row)
-        if row is not None:
+    except Exception as e:
+        logging.info(f"Error plotting MWA light curve: {e}")
+        axes[2].text(0.5, 0.5, 'MWA light curve not available', ha='center', va='center')
+    if row is not None:
+        try:
             plot_positions(time_axis, axes[3])
+        except Exception as e:
+            logging.info(f"Error plotting positions: {e}")
+            axes[3].text(0.5, 0.5, 'Positions not available', ha='center', va='center')
+        try:
             plot_ecallistio(row, axes[4], fig, cbar_gs)
-        finalize_plot(fig, save_path)
-    finally:
-        plt.close(fig)
+        except Exception as e:
+            logging.info(f"Error plotting e-Callisto data: {e}")
+            axes[4].text(0.5, 0.5, 'e-Callisto data not available', ha='center', va='center')
+    finalize_plot(fig, save_path)
+    plt.close(fig)
 
     return False
 

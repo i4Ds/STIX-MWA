@@ -7,6 +7,7 @@ import tempfile
 import numpy as np
 from casacore.tables import table, taql
 from helper_functions.utils import safe_parse_time
+from maad.sound import median_equalizer
 
 
 def get_spectrogram(mwa_metadata, path_to_data):
@@ -21,6 +22,7 @@ def get_spectrogram(mwa_metadata, path_to_data):
         if result is None:
             continue
         dspec, time_range = result
+        #dspec['spec'] = subtract_background(dspec['spec'])
         spectrograms.append(dspec)
         times.append(time_range)
         processed_ids.append(row['obs_id'])
@@ -206,3 +208,7 @@ def merge_spectrograms(spectrograms, times, time_res=4):
 
     final_spec = np.hstack(combined_spec) if combined_spec else None
     return final_spec, combined_times, freq_axis
+
+
+def subtract_background(spec, add_offset=0, q=0.5, mode='ale', axis=1, N=25):
+    return median_equalizer(spec, display=False) 

@@ -11,22 +11,27 @@ from mantaray.api import Session, Notify
 from mantaray.scripts.mwa_client import submit_jobs, status_func, download_func, notify_func
 
 
-def create_jobs(observations, job_type='c', time_resolution=4, freq_resolution=160):
+def create_jobs(observations, job_info):
     """
     creates a list of job specifications for the mwa asvo jobs based on observation ids
     job_type: 'c' for conversion, 'v' for voltage, 'm' for metafits-only
     """
+    job_type = job_info.get('job_type', 'c')
+
     if job_type == 'c':
+        time_resolution = job_info.get('avg_time_res', 4)
+        freq_resolution = job_info.get('avg_freq_res', 160)
+        apply_cal = job_info.get('apply_cal', False)
         return [
             (
                 'submit_conversion_job_direct',
                 {
                     'obs_id': obs_id,
                     'job_type': 'c',
-                    'avg_time_res': time_resolution,
-                    'avg_freq_res': freq_resolution,
                     'output': 'ms',
-                    #'apply_di_cal': 'true'
+                    **({'avg_time_res': time_resolution} if time_resolution is not None else {}),
+                    **({'avg_freq_res': freq_resolution} if freq_resolution is not None else {}),
+                    **({'apply_di_cal': 'true'} if apply_cal else {})
                 }
             )
             for obs_id in observations

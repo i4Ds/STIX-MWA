@@ -185,6 +185,10 @@ def calculate_overlap(mwa_data: pd.DataFrame, flare_start, flare_end, mwa_locati
         (mwa_data['stoptime_utc'] >= flare_start)
     ]
 
+    if not mwa_relevant.empty:
+        times = mwa_relevant[['starttime_utc', 'stoptime_utc']]
+        print(f"{flare_start} - {flare_end} overlaps with {times} mwa observations")
+
     total_overlap = timedelta(seconds=0)
 
     for _, mwa_row in mwa_relevant.iterrows():
@@ -199,8 +203,8 @@ def calculate_overlap(mwa_data: pd.DataFrame, flare_start, flare_end, mwa_locati
         adjusted_sunrise = sunrise - timedelta(days=1) if dt_time(0, 0) <= overlap_start.time() < dt_time(12, 0) else sunrise
         adjusted_sunset = sunset + timedelta(days=1) if dt_time(17, 0) <= overlap_start.time() <= dt_time(23, 59) else sunset
 
-        total_overlap_start = max(overlap_start, adjusted_sunrise)
-        total_overlap_end = min(overlap_end, adjusted_sunset)
+        total_overlap_start = overlap_start
+        total_overlap_end = overlap_end
 
         if total_overlap_start < total_overlap_end:
             total_overlap += total_overlap_end - total_overlap_start

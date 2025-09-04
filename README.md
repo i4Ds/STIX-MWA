@@ -21,7 +21,7 @@ This codebase supports **Python 3.8–3.10** to ensure compatibility with recent
 ### 1. Conda Environment
 Ensure you have Conda or a compatible tool installed. Then:
 ```bash
-conda env create -f environment.yaml -n stixmwa
+conda env create -f environment.yml -n stixmwa
 conda activate stixmwa
 ```
 

@@ -54,7 +54,7 @@ class CallistoSpectrogram:
 def get_ecallisto_data(flare_start, flare_end):
     """
     find multiple callisto files and combine their data into one stacked spectrogram
-    assumes all files have the same frequency axis
+    assumes all files have the same frequency axis shape and values
     """
 
     ecallisto_paths = find_matching_callisto_files(flare_start, flare_end)
@@ -62,6 +62,7 @@ def get_ecallisto_data(flare_start, flare_end):
     all_data = []
     all_time = []
     freq_axis = None
+    freq_shape = None
 
     for path in sorted(ecallisto_paths):  # sort by time
         logging.info(f"Loading {path}")
@@ -71,10 +72,14 @@ def get_ecallisto_data(flare_start, flare_end):
             # compare frequency axes
             if freq_axis is None:
                 freq_axis = spec.freq_axis
-            elif not np.allclose(freq_axis, spec.freq_axis, atol=0.01):
-                logging.info(f"Skipping {path}: incompatible frequency axis")
+                freq_shape = spec.data.shape[1]
+            elif (
+                not np.allclose(freq_axis, spec.freq_axis, atol=0.01)
+                or spec.data.shape[1] != freq_shape
+            ):
+                logging.info(f"Skipping {path}: incompatible frequency axis or shape")
                 continue
-            
+
             all_data.append(spec.data)
             all_time.extend(spec.time_axis)
 
@@ -186,6 +191,7 @@ def normalize(ts):
     return ts.replace(tzinfo=None)
 
 
+from helper_functions.spectrogram import subtract_background
 def plot_ecallistio(row, ax, fig, gs):
     """ 
     plots e-Callisto spectrogram for Australia-ASSA
@@ -194,6 +200,7 @@ def plot_ecallistio(row, ax, fig, gs):
     flare_end = safe_parse_time(row['mwa_end_UTC'])
 
     data, time_axis, freq_axis = get_ecallisto_data(flare_start, flare_end)
+    data = subtract_background(data)
     if data is not None:
         im = ax.imshow(
             data,

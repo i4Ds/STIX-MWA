@@ -19,7 +19,7 @@ def main():
         plot_by_observations(observations, save_folder)
     else:
         flare_csv = "../files/flares_recorded_by_mwa_G0002_vfe_true.csv"
-        plot_by_flarelist(save_folder, flare_csv, flare_range=(79, 85))  # None or e.g. flare_range=(0, 3000)
+        plot_by_flarelist(save_folder, flare_csv, flare_range=(0, 250))  # None or e.g. flare_range=(0, 3000)
 
 
 def plot_by_observations(observations, save_folder):

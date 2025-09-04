@@ -1,7 +1,9 @@
 import ast
 import pyvo
 import logging
+import requests
 import numpy as np
+import pandas as pd
 from dateutil import parser
 from datetime import timedelta
 from collections import Counter
@@ -11,9 +13,7 @@ from helper_functions.utils import safe_parse_time, set_x_ticks
 
 
 def get_mwa_metadata(start_time=None, end_time=None, obs_ids=None):
-    tap_service = pyvo.dal.TAPService("http://vo.mwatelescope.org/mwa_asvo/tap")
-
-     # define the query based on the input parameters
+    # construct the ADQL query
     if obs_ids is not None:
         ids_formatted = ', '.join(f"'{id}'" for id in obs_ids)
         query = f"SELECT * FROM mwa.observation WHERE obs_id IN ({ids_formatted})"
@@ -24,13 +24,29 @@ def get_mwa_metadata(start_time=None, end_time=None, obs_ids=None):
         AND starttime_utc <= '{format_time_for_mwa(end_time)}'
         """
     else:
-        raise ValueError("Invalid parameters. Provide either 'obs_id' or both 'start_time' and 'end_time'.")
+        raise ValueError("invalid parameters. provide either 'obs_id' or both 'start_time' and 'end_time'.")
 
-     # execute the query
-    result = tap_service.search(query)
-    mwa_metadata = result.to_table().to_pandas().sort_values(by='starttime_utc').reset_index(drop=True)
-    logging.info(f"Number of found observations is {len(mwa_metadata)}")
-    return mwa_metadata
+    # tap endpoint
+    tap_url = "https://vo.mwatelescope.org/mwa_asvo/tap/sync"
+
+    # form data required for a TAP sync query
+    data = {
+        "REQUEST": "doQuery",
+        "LANG": "ADQL",
+        "FORMAT": "csv",
+        "QUERY": query
+    }
+
+    # make the request
+    response = requests.post(tap_url, data=data)
+    response.raise_for_status()  # raise error if HTTP status is not 200
+
+    # convert to pandas dataframe
+    from io import StringIO
+    df = pd.read_csv(StringIO(response.text))
+    df = df.sort_values(by="starttime_utc").reset_index(drop=True)
+    logging.info(f"number of found observations is {len(df)}")
+    return df
 
 
 def format_time_for_mwa(time_str):

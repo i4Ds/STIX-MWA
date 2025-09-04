@@ -1,5 +1,5 @@
 from pathlib import Path
-import os, shutil, subprocess, logging
+import os, shutil, subprocess, logging, re
 import numpy as np
 from casacore.tables import table
 from astropy.io import fits
@@ -7,52 +7,37 @@ from astropy.time import Time, TimeDelta
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.animation import FFMpegWriter
+from helper_functions.utils import find_data_column, reset_dir
 
 log = logging.getLogger(__name__)
 
-# default imaging parameters – overwrite from caller if needed
-image_size_pixels = 2048
-scale_arcsec_per_pixel = 5
 
-
-def reset_dir(path: Path):
-    """ensure directory exists and is empty"""
-    shutil.rmtree(path, ignore_errors=True)
-    path.mkdir(parents=True, exist_ok=True)
-
-
-def find_data_column(ms_path: Path) -> str:
-    """return corrected_data if it exists, else data"""
-    with table(str(ms_path)) as t:
-        cols = t.colnames()
-    return "CORRECTED_DATA" if "CORRECTED_DATA" in cols else "DATA"
-
-
-def run_wsclean(ms_path: Path, interval_count: int, work_dir: Path):
+def run_wsclean(ms_path: Path, interval_count: int, work_dir: Path, n_iter=10, image_size_pixels=2048, scale_arcsec_per_pixel=5):
     """run wsclean snapshot imaging"""
     reset_dir(work_dir)
-    data_col = find_data_column(ms_path)
     cmd = [
         "wsclean",
-        "-data-column", data_col,
+        "-data-column", find_data_column(ms_path),
         "-intervals-out", str(interval_count),
         "-size", str(image_size_pixels), str(image_size_pixels),
         "-scale", f"{scale_arcsec_per_pixel}asec",
-        "-pol", "I",
-        "-channels-out", "1",
+        "-pol", "xx,yy",
+        "-join-polarizations",
 
-        # CLEAN settings
-        "-niter", "5000",
+        "-niter", n_iter, 
         "-auto-mask", "3",
         "-auto-threshold", "0.7",
         "-multiscale",
         "-mgain", "0.8",
         "-weight", "briggs", "0",
-        "-apply-primary-beam",
+        #"-apply-primary-beam",
 
         str(ms_path),
     ]
+
     env = dict(os.environ, OPENBLAS_NUM_THREADS="1")
+    env["MWA_BEAM_FILE"] = str(Path.home() / "local/share/mwa_full_embedded_element_pattern.h5")
+
     res = subprocess.run(
         cmd, cwd=work_dir, env=env,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -62,25 +47,15 @@ def run_wsclean(ms_path: Path, interval_count: int, work_dir: Path):
 
 
 def load_stokes_i_stack(work_dir: Path) -> np.ndarray:
-    """read wsclean fits files into [t, y, x] cube"""
+    #read wsclean fits files into [t, y, x] cube
     files = sorted(work_dir.glob("wsclean-t*-image.fits"))
     if not files:
         raise FileNotFoundError("no stokes-i fits produced")
-    return np.array([np.squeeze(fits.getdata(f)) for f in files])
-
-
-def get_time_info(ms_path: Path):
-    """return (start_time, interval_size, interval_count)"""
-    obs = table(str(ms_path))
-    obs.unlock()
-    centers = obs.getcol("TIME")
-    sizes   = obs.getcol("INTERVAL")
-    radius  = sizes / 2.0
-    mjd0    = np.min(centers - radius) / 86400.0
-    mjd1    = np.max(centers + radius) / 86400.0
-    dt      = TimeDelta(sizes[0], format="sec")
-    count   = int((mjd1 - mjd0) * 86400 / dt.sec)
-    return Time(mjd0, format="mjd", scale="utc"), dt, count
+    stack = []
+    for f in files:
+        with fits.open(f, memmap=False) as hdul:
+            stack.append(np.squeeze(hdul[0].data))
+    return np.array(stack)
 
 
 def animate_stack(stack: np.ndarray, times: Time, out_path: Path):
