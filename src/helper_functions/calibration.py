@@ -31,11 +31,6 @@ def run_di_calibrate(cal_ms: Path, flux_jy: float, sol_path: Path, work_root):
     yaml_path = sol_path.with_suffix(".yaml")
     write_point_srclist(cal_ms, flux_jy, yaml_path)
 
-    os.environ.setdefault(
-        "MWA_BEAM_FILE",
-        str(Path.home() / "local/share/mwa_full_embedded_element_pattern.h5")
-    )
-
     subprocess.run(
         ["hyperdrive", "di-calibrate",
          "-d", str(cal_ms),
