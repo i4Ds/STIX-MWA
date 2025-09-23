@@ -13,7 +13,9 @@ log = logging.getLogger(__name__)
 
 
 def run_wsclean(ms_path: Path, interval_count: int, work_dir: Path, n_iter=10, image_size_pixels=2048, scale_arcsec_per_pixel=5):
-    """run wsclean snapshot imaging"""
+    """
+    run wsclean snapshot imaging
+    """
     reset_dir(work_dir)
     cmd = [
         "wsclean",
@@ -47,7 +49,10 @@ def run_wsclean(ms_path: Path, interval_count: int, work_dir: Path, n_iter=10, i
 
 
 def load_stokes_i_stack(work_dir: Path) -> np.ndarray:
-    #read wsclean fits files into [t, y, x] cube
+    """
+    load stokes i image stack from mwa data
+    read wsclean fits files into [t, y, x] cube
+    """
     files = sorted(work_dir.glob("wsclean-t*-image.fits"))
     if not files:
         raise FileNotFoundError("no stokes-i fits produced")
@@ -59,7 +64,9 @@ def load_stokes_i_stack(work_dir: Path) -> np.ndarray:
 
 
 def animate_stack(stack: np.ndarray, times: Time, out_path: Path):
-    """save stack as mp4 animation"""
+    """
+    save stack as mp4 animation
+    """
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     fig, ax = plt.subplots()

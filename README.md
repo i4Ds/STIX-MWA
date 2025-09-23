@@ -1,19 +1,32 @@
 # STIX–MWA Data Analysis
 
-This repository provides tools for analyzing and comparing data from [STIX](https://datacenter.stix.i4ds.net/) (Spectrometer/Telescope for Imaging X-rays aboard Solar Orbiter) and the [MWA](https://www.mwatelescope.org/) (Murchison Widefield Array).
+This repository provides tools for analyzing and comparing data from 
+[STIX](https://datacenter.stix.i4ds.net/) (Spectrometer/Telescope for Imaging X-rays aboard Solar Orbiter) 
+and the [MWA](https://www.mwatelescope.org/) (Murchison Widefield Array).
+
+---
 
 ## Table of Contents
-- [Getting Started](#getting-started)
+- [Overview](#overview)
 - [Environment Setup](#environment-setup)
-  - [1. Conda Environment](#1-conda-environment)
-  - [2. Additional Dependencies](#2-additional-dependencies)
-    - [Manta-ray](#manta-ray)
-    - [casacore](#casacore)
-    - [WSClean](#wsclean)
-- [Environment Variables](#environment-variables)
-- [Contact](#contact)
+- [Repository Layout](#repository-layout)
+- [Known Issues / TODO](#known-issues--todo)
 
-## Getting Started
+---
+
+## Overview
+This project integrates STIX and MWA observations to:
+- identify overlapping solar flare events,
+- download and preprocess MWA visibilities,
+- generate dynamic spectra and light curves,
+- compare flare timing and locations across instruments.
+
+It also includes optional support for e-CALLISTO data and imaging routines using WSClean/CASA.
+
+---
+
+## Environment Setup
+
 This codebase supports **Python 3.8–3.10** to ensure compatibility with recent versions of CASA.
 
 ## Environment Setup
@@ -83,8 +96,31 @@ export LD_LIBRARY_PATH="$HOME/casacore-install/lib:$LD_LIBRARY_PATH"
 export PKG_CONFIG_PATH="$HOME/casacore-install/lib/pkgconfig:$PKG_CONFIG_PATH"
 ```
 
-## Environment Variables
-Create a \`.env\` file in the project root directory. Use the provided \`.env.example\` file as a template.  
+### 3. Environment Variables
+A sample `.env.example` file is provided. Copy it to `.env` and fill in required values (e.g., API keys, data paths).
 
-## Contact
-For questions, suggestions, or contributions, please [open an issue](https://github.com/i4Ds/STIX-MWA/issues) or submit a pull request.
+---
+
+## Repository Layout
+
+- `src/find_flares_in_mwa.py` – queries STIX flare list and checks overlap with MWA obs times.
+- `src/get_mwa_data.py` – downloads raw data from MWA ASVO.
+- `src/compare_mwa_stix_locations.py` – cross-comparison of event positions.
+- `src/plot.py` – generates light curves and spectrogram plots.
+- `src/run_wsclean.py` – runs WSClean imaging pipeline.
+
+### helper functions (`src/helper_functions/`)
+- `stix.py` – STIX flare parsing and lightcurve handling.
+- `mwa_asvo.py` – querying MWA ASVO API.
+- `spectrogram.py` – building spectrograms from visibilities.
+- `ecallisto.py` – optional integration of e-CALLISTO data.
+- `plot_flare.py` – visualization helpers.
+- `utils.py` – shared helpers.
+- `calibration.py`, `selfcal.py`, `mwa_imaging.py` – calibration and imaging routines.
+
+---
+
+## Known Issues / TODO
+- CASA compatibility can be version-sensitive.
+- Spectrogram generation is slow for full observations → parallelization would help.
+- Some helper modules (`calibration.py`, `selfcal.py`) are experimental.

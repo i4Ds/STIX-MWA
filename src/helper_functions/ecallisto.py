@@ -188,6 +188,9 @@ def parse_file_time(filename):
 
 
 def normalize(ts):
+    """
+    normalize time information by removing timezone
+    """
     return ts.replace(tzinfo=None)
 
 
@@ -196,8 +199,8 @@ def plot_ecallistio(row, ax, fig, gs):
     """ 
     plots e-Callisto spectrogram for Australia-ASSA
     """
-    flare_start = safe_parse_time(row['mwa_start_UTC'])
-    flare_end = safe_parse_time(row['mwa_end_UTC'])
+    flare_start = safe_parse_time(row['start_UTC'])
+    flare_end = safe_parse_time(row['end_UTC'])
 
     data, time_axis, freq_axis = get_ecallisto_data(flare_start, flare_end)
     data = subtract_background(data)

@@ -1,3 +1,13 @@
+"""
+plots data for flares based on provided observation ids or from STIX flares csv matched.
+plots:
+    - stix light curves
+    - mwa spectrograms 
+    - mwa light curves
+    - location of the stix instrument at a given time
+    - eCALLISTO spectrograms if available
+"""
+
 import os
 import gc
 import logging 
@@ -9,7 +19,7 @@ from helper_functions.plot_flare import plot_flare
 
 def main():
     """
-    plots data based on provided observation ids or STIX flares matched with mwa metadata.
+    either provide a list of observation ids, or a flare csv file will be used
     """
     save_folder = '../results/plots/spectrograms_and_light_curves_G0002_vfe_true'
     observations = ['1126847624']  # set to [] to use flare list

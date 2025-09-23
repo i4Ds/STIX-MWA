@@ -15,24 +15,27 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger(__name__)
 
 
+# ============ user configuration =============
 runs = [
     {
-        "flare_id":        "1126847624",
-        "observation_ids": ['1126847624_846700'],
-        "calibration_id":  "1126832808_HydA_881096",           # set to None for no calibration
-        "calibrator_flux_jy":  500.0,                          # flux of calibrator at 150MHz
-        "selfcal":       False,
+        "flare_id":             "1126847624",               # used only in output filename
+        "observation_ids":      ['1126847624_846700'],
+        "calibration_id":       "1126832808_HydA_881096",   # set to None for no calibration
+        "calibrator_flux_jy":   500.0,
+        "selfcal":              False,
     },
 ] 
 
-# default wsclean parameters
+# wsclean parameters
 image_size_pixels = 2048
 scale_arcsec_per_pixel = 5
 niter = 10
 
+# paths
 root_path_to_data = get_root_path_to_data()
 work_base = Path(root_path_to_data) / "tmp"
 out_base  = Path.cwd().parent / "results" / "mwa_vids"
+# =============================================
 
 
 def main():
@@ -71,6 +74,7 @@ def main():
                     if sol_path else raw_ms
                 )
                 
+                # TODO: self-calibration not working correctly yet
                 if cfg["selfcal"]:
                     # self-calibration loop using wsclean
                     ms_in = self_calibrate(

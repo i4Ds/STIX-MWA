@@ -1,4 +1,3 @@
-
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from helper_functions.utils import get_root_path_to_data
@@ -11,6 +10,15 @@ import logging
 def plot_flare(save_path, row=None, obs_ids=None):
     """
     plots spectrograms using either manually specified observation IDs or flare metadata
+    
+    plots data for flares based either on provided observation ids or from STIX flares csv matched and mwa metadata.
+    plots:
+        - stix light curves
+        - mwa spectrograms 
+        - mwa light curves
+        - location of the stix instrument at a given time
+        - eCALLISTO spectrograms if available
+
     """
     fig, axes, cbar_gs = create_figure_and_axes(subplots=5)
     time_axis = []
@@ -60,6 +68,9 @@ def plot_flare(save_path, row=None, obs_ids=None):
 
 
 def create_figure_and_axes(subplots=5):
+    """
+    create matplotlib figure and axes for flare plot
+    """
     fig = plt.figure(figsize=(10, 18))
     gs = GridSpec(subplots, 2, width_ratios=[1, 0.05], height_ratios=[1 for _ in range(subplots)])
     axes = [fig.add_subplot(gs[i, 0]) for i in range(subplots)]
@@ -67,7 +78,9 @@ def create_figure_and_axes(subplots=5):
 
 
 def finalize_plot(fig, save_path):
-    # save the plot to a file and close the figure
+    """
+    finalize and save flare plot
+    """
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close(fig)

@@ -1,6 +1,8 @@
-#!/usr/bin/env python3
-# mwa→stix comparison with calibration, imaging, localization, and annotated plot
-
+"""
+compares MWA radio burst location with STIX HXR flare centroid
+stix flare data from https://github.com/hayesla/stix_flarelist_science
+mwa burst localization done via shallow imaging with WSCLEAN (and preforms calibration before)
+"""
 from pathlib import Path
 import logging, shutil, subprocess, csv
 import numpy as np
@@ -14,7 +16,6 @@ from astropy.coordinates import SkyCoord
 from sunpy.coordinates import frames, get_earth, sun
 from scipy.ndimage import gaussian_filter
 
-# your helpers
 from helper_functions.utils import get_observation_path, get_ms_files, get_root_path_to_data
 import helper_functions.calibration as cal
 from helper_functions.mwa_imaging import run_wsclean
@@ -24,18 +25,11 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("mwa_stix_compare")
 
 
-# ========= user configuration (edit) =========
+# ============ user configuration =============
 RUN = {
     "flare_id":       "2104122000",
     "observation_id": "1126847624_846700",
     "calibration_id": "1126832808_HydA_881096",   # set to None to skip external cal
-    "calibrator_flux_jy": 500.0,
-    "stix_csv_path":   "../files/STIX_flarelist_w_locations_20210214_20250228_version1_python.csv",
-}
-RUN = {
-    "flare_id":       "2312250224",
-    "observation_id": "1387506256_880863",
-    "calibration_id": "1387539736_880865",   # set to None to skip external cal
     "calibrator_flux_jy": 500.0,
     "stix_csv_path":   "../files/STIX_flarelist_w_locations_20210214_20250228_version1_python.csv",
 }
@@ -50,7 +44,9 @@ KEEP_WORK      = False
 
 
 def main():
-    """run calibration, optional slice, shallow imaging, localization, then plot with stix"""
+    """
+    run calibration, shallow imaging, localization, then plot with stix
+    """
     root_path = get_root_path_to_data()
     tag = Time.now().utc.isot.replace(":", "").replace("-", "").split(".")[0]
     work_root = Path(root_path) / "tmp" / f"mwa_stix_{RUN['observation_id']}_{tag}"
@@ -110,7 +106,9 @@ def main():
 
 
 def check_ms_rows(ms_path: Path) -> int:
-    """return number of rows in the ms main table (0 on failure)"""
+    """
+    return number of rows in the ms main table (0 on failure)
+    """
     try:
         from casacore.tables import table
         with table(str(ms_path)) as T:
@@ -121,7 +119,9 @@ def check_ms_rows(ms_path: Path) -> int:
 
 
 def best_result_entry(results: list[dict]) -> dict:
-    """pick best frame: prefer 'burst*' mode, then highest score"""
+    """
+    pick best frame: prefer 'burst*' mode, then highest score
+    """
     return sorted(
         results,
         key=lambda d: (0 if str(d.get("mode","")).startswith("burst") else 1,
@@ -130,7 +130,9 @@ def best_result_entry(results: list[dict]) -> dict:
 
 
 def read_stix_earth_hpc(csv_path: Path, flare_id: str):
-    """read stix earth-view tx/ty [arcsec] and start/end/peak times from csv"""
+    """
+    read stix earth-view tx/ty [arcsec] and start/end/peak times from csv
+    """
     with open(csv_path, newline="") as f:
         R = csv.DictReader(f)
         for row in R:
@@ -148,7 +150,9 @@ def read_stix_earth_hpc(csv_path: Path, flare_id: str):
 def plot_compare(fits_path: Path, burst_ra_deg: float, burst_dec_deg: float,
                  stix_tx: float, stix_ty: float, t_mwa_iso: str,
                  t_stix_iso: str, t_stix_peak: str, out_png: Path):
-    """plot radio frame with mwa burst (black x) and stix centroid (red +), annotate hpc and separation"""
+    """
+    plot radio frame with mwa burst (black x) and stix centroid (red +), annotate hpc and separation
+    """
     # read image + header
     with fits.open(fits_path, memmap=False) as hdul:
         img = np.squeeze(hdul[0].data).astype(float)

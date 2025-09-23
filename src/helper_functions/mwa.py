@@ -13,6 +13,9 @@ from helper_functions.utils import safe_parse_time, set_x_ticks
 
 
 def get_mwa_metadata(start_time=None, end_time=None, obs_ids=None):
+    """
+    get metadata for an mwa observation
+    """
     # construct the ADQL query
     if obs_ids is not None:
         ids_formatted = ', '.join(f"'{id}'" for id in obs_ids)
@@ -50,6 +53,9 @@ def get_mwa_metadata(start_time=None, end_time=None, obs_ids=None):
 
 
 def format_time_for_mwa(time_str):
+    """
+    format time string for mwa queries
+    """
     dt = parser.parse(time_str)
      # format the datetime to the desired format, cutting off milliseconds to 3 digits
     formatted_time = dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
@@ -57,6 +63,9 @@ def format_time_for_mwa(time_str):
 
 
 def get_mwa_light_curve(spectrogram):
+    """
+    download and process mwa light curve
+    """
     return np.ma.sum(spectrogram, axis=0) if spectrogram is not None else None
 
 
@@ -108,8 +117,8 @@ def plot_mwa_from_flare_row(flare_row, ax, fig, gs, path_to_data):
     """ 
     plots MWA spectrograms for the flare defined in flare_row.
     """
-    start_time = flare_row["mwa_start_UTC"]
-    end_time = flare_row["mwa_end_UTC"]
+    start_time = flare_row["start_UTC"]
+    end_time = flare_row["end_UTC"]
 
     mwa_metadata = get_mwa_metadata(start_time=start_time, end_time=end_time)
     if mwa_metadata.empty:
@@ -188,7 +197,7 @@ def plot_mwa_light_curve(spec, time_axis, ax, flare_row):
     if flare_row is None:
         ax.set_xlim(time_axis[0], time_axis[-1])
     else:
-        ax.set_xlim(safe_parse_time(flare_row["mwa_start_UTC"]), safe_parse_time(flare_row["mwa_end_UTC"]))
+        ax.set_xlim(safe_parse_time(flare_row["start_UTC"]), safe_parse_time(flare_row["end_UTC"]))
     ax.set_title("Integrated MWA light curve")
     ax.set_ylabel("Total intensity (log scale)")
     ax.set_xlabel("Time (UTC)")

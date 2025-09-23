@@ -8,6 +8,9 @@ logging.basicConfig(level=logging.INFO, format='%(message)s')
 
 
 def get_flarelist(path_to_flarelist):
+    """
+    load csv of stix flares
+    """
     try:
         return pd.read_csv(path_to_flarelist)
     except FileNotFoundError:
@@ -15,6 +18,9 @@ def get_flarelist(path_to_flarelist):
 
 
 def load_stix_light_curve(start_utc, end_utc):
+    """
+    load stix light curve data
+    """
     try:
         return LightCurves.from_sdc(start_utc, end_utc, ltc=True)
     except Exception as e:
@@ -22,6 +28,9 @@ def load_stix_light_curve(start_utc, end_utc):
 
 
 def get_position(start, end):
+    """
+    get flare position from stix metadata
+    """
     try:
         return aux.Ephemeris.from_sdc(start_utc=start, end_utc=end, steps=1)
     except Exception as e:
@@ -34,8 +43,8 @@ def plot_stix_light_curve(row, ax, energy_range):
     """
     plots STIX light curves for the flare defined in row.
     """
-    start_utc = row['stix_start_UTC']
-    end_utc = row['stix_end_UTC']
+    start_utc = row['start_UTC']
+    end_utc = row['end_UTC']
 
     light_curve = load_stix_light_curve(start_utc, end_utc)
 

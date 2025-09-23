@@ -2,13 +2,15 @@ import subprocess, os, shutil, logging
 from pathlib import Path
 import numpy as np
 from casacore.tables import table
-from helper_functions.utils import get_observation_path, get_metafits_files, ms_central_frequency
+from helper_functions.utils import get_observation_path, ms_central_frequency
 
 log = logging.getLogger(__name__)
 
 
 def write_point_srclist(ms_path: Path, flux_jy: float, out_yaml: Path):
-    """write a one-line yaml sky model at the ms phase centre"""
+    """
+    write a one-line yaml sky model at the ms phase centre
+    """
     fld = table(str(ms_path / "FIELD"))
     ra_rad, dec_rad = fld.getcol("PHASE_DIR")[0, 0, :]
     fld.close()
@@ -27,7 +29,9 @@ calibrator:
 
 
 def run_di_calibrate(cal_ms: Path, flux_jy: float, sol_path: Path, work_root):
-    """derive direction-independent gains"""
+    """
+    derive direction-independent gains
+    """
     yaml_path = sol_path.with_suffix(".yaml")
     write_point_srclist(cal_ms, flux_jy, yaml_path)
 
@@ -41,7 +45,9 @@ def run_di_calibrate(cal_ms: Path, flux_jy: float, sol_path: Path, work_root):
 
 
 def apply_solutions(raw_ms: Path, sol_path: Path, work_root) -> Path:
-    """apply gains and return new *_cal.ms path"""
+    """
+    apply gains and return new *_cal.ms path
+    """
     out_ms = raw_ms.with_name(f"{raw_ms.stem}_cal{raw_ms.suffix}")
     if out_ms.exists():
         shutil.rmtree(out_ms)

@@ -54,12 +54,18 @@ def process_single_observation(row, path_to_data):
 
 
 def get_raw_data_file_path(obs_id, path_to_data):
+    """
+    return path to raw spectrogram data file
+    """
     available_files = set(os.listdir(path_to_data))
     measurement = next((f for f in available_files if f.startswith(f"{obs_id}_")), None)
     return os.path.join(path_to_data, measurement) if measurement else None
 
 
 def get_dynamic_spec(fname=None, domedian=True):
+    """
+    generate dynamic spectrum from data
+    """
     try:
         ms_files, temp_dir = get_ms_files(fname)
     except Exception as e:
@@ -211,4 +217,7 @@ def merge_spectrograms(spectrograms, times, time_res=4):
 
 
 def subtract_background(spec, add_offset=0, q=0.5, mode='ale', axis=1, N=25):
+    """
+    subtract background from spectrogram
+    """
     return median_equalizer(spec, display=False) 

@@ -19,16 +19,25 @@ ROOT_PATH_TO_DATA = Path(os.getenv("ROOT_PATH_TO_DATA", None))
 
 
 def get_root_path_to_data():
+    """
+    return root path to data storage
+    """
     if ROOT_PATH_TO_DATA is None:
         raise ValueError("ROOT_PATH_TO_DATA not set.")
     return ROOT_PATH_TO_DATA
 
 
 def safe_parse_time(t):
+    """
+    safely parse time string to datetime
+    """
     return parser.parse(t).replace(microsecond=0) if isinstance(t, str) else t.replace(microsecond=0)
 
 
 def set_x_ticks(ax):
+    """
+    set x-axis tick labels for plots
+    """
     locator = AutoDateLocator(minticks=3, maxticks=7)
     formatter = ConciseDateFormatter(locator)
     ax.xaxis.set_major_locator(locator)
@@ -36,6 +45,9 @@ def set_x_ticks(ax):
 
 
 def get_observation_path(observation_id):
+    """
+    return path to mwa observation directory
+    """
     root = get_root_path_to_data()
     candidates = [p for p in root.glob(f"*{observation_id}*.tar") if p.is_file()]
     if not candidates:
@@ -44,7 +56,9 @@ def get_observation_path(observation_id):
 
 
 def get_ms_files(tar_path, scratch_root):
-    """extract a *.ms from *tar_path* and return (ms_path, tmp_dir)"""
+    """
+    extract only one *.ms, corresponding to one freq range, from *tar_path* and return (ms_path, tmp_dir)
+    """
 
     with tarfile.open(tar_path, "r") as tar:
         # find the first directory that ends with '.ms'
@@ -73,41 +87,19 @@ def get_ms_files(tar_path, scratch_root):
     return Path(tmp_dir) / ms_dirinfo.name.lstrip("./")
 
 
-def get_metafits_files(tar_path, scratch_root):
-    """extract a *.metafits from *tar_path* and return (ms_path, tmp_dir)"""
-
-    with tarfile.open(tar_path, "r") as tar:
-        # find the first directory that ends with '.ms'
-        ms_names = [m for m in tar.getmembers() if m.name.endswith(".metafits")]
-        if not ms_names:
-            raise ValueError("no .metafits directory found in archive")
-
-        logging.info(ms_names)
-        
-        ms_dirinfo = ms_names[0]
-        logging.info(f"extracting {ms_dirinfo.name}")
-
-        # collect that directory plus every member under it
-        prefix = ms_dirinfo.name.rstrip("/") + "/"
-        members = [m for m in tar.getmembers()
-                   if m.name == ms_dirinfo.name or m.name.startswith(prefix)]
-                   
-        # create a temporary workspace on scratch_root
-        tmp_dir = tempfile.mkdtemp(dir=scratch_root)
-        tar.extractall(path=tmp_dir, members=members)
-
-    return Path(tmp_dir) / ms_dirinfo.name.lstrip("./")
-
-
 def find_data_column(ms_path: Path) -> str:
-    """return corrected_data if it exists, else data"""
+    """
+    return corrected_data if it exists, else data
+    """
     with table(str(ms_path)) as t:
         cols = t.colnames()
     return "CORRECTED_DATA" if "CORRECTED_DATA" in cols else "DATA"
 
 
 def reset_dir(path: Path):
-    """ensure directory exists and is empty"""
+    """
+    ensure directory exists and is empty
+    """
     shutil.rmtree(path, ignore_errors=True)
     path.mkdir(parents=True, exist_ok=True)
 

@@ -16,9 +16,12 @@ import pkg_resources  # part of setuptools
 
 
 def get_api_version_number():
-    # This is what we send to the server when we confirm version compatibility.
+    """
+    return api version number
+    """
+    
+    # this is what we send to the server when we confirm version compatibility.
     version = pkg_resources.require("mantaray-client")[0].version  # format major.minor.revision
-
     version_parts = version.split(".")
     return "mantaray-clientv{0}.{1}".format(version_parts[0], version_parts[1])
 

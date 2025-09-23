@@ -1,3 +1,7 @@
+"""
+matches STIX flares with MWA observations based on time overlap during local daylight
+STIX flare data from https://github.com/hayesla/stix_flarelist_science
+"""
 import os
 import pandas as pd
 import pytz
@@ -15,9 +19,7 @@ import numpy as np
 
 def main():
     """
-    runs the main workflow to match stix flares with mwa observations,
-    applies time correction, enriches them with observation and calibrator
-    metadata, and saves filtered flare data to disk
+    runs the main workflow to match stix flares with mwa observations
     """
 
     stix_flares_path = "../files/STIX_flarelist_w_locations_20210214_20250228_version1_python.csv"
@@ -26,23 +28,18 @@ def main():
     mwa_data = load_and_preprocess_mwa_metadata()
     mwa_location = LocationInfo("MWA", "Australia", "Australia/Perth", latitude=-26.7033, longitude=116.6708)
 
-    for use_time_correction in [False]:
-        logging.info(f"time correction: {use_time_correction}")
-        stix_data = load_and_preprocess_stix_data(stix_flares_path, use_time_correction)
+    # load and preprocess stix flare data
+    stix_data = load_and_preprocess_stix_data(stix_flares_path)
 
-        # analyse, filter and enrich flares
-        flares_df, num_samples = analyze_and_filter_flares(stix_data, mwa_data, mwa_location)
-        flares_df = attach_mwa_and_calibrator_info(flares_df, mwa_data)
+    # analyse, filter and enrich flares
+    flares_df, num_samples = analyze_and_filter_flares(stix_data, mwa_data, mwa_location)
+    flares_df = attach_mwa_and_calibrator_info(flares_df, mwa_data)
 
-        # decide output file name
-        save_path = (
-            '../files/flares_recorded_by_mwa_test.csv'
-            if use_time_correction else
-            '../files/flares_recorded_by_mwa_test.csv'
-        )
+    # decide output file name
+    save_path = '../files/flares_recorded_by_mwa_test.csv'
 
-        flares_df.to_csv(save_path, index=False)
-        print_summary(num_samples)
+    flares_df.to_csv(save_path, index=False)
+    print_summary(num_samples)
 
 
 def load_and_preprocess_mwa_metadata(save: bool = False, path_to_save: str = "../files") -> pd.DataFrame:
@@ -85,7 +82,7 @@ def load_and_preprocess_mwa_metadata(save: bool = False, path_to_save: str = "..
     return mwa
 
 
-def load_and_preprocess_stix_data(filepath: str, use_time_correction: bool) -> pd.DataFrame:
+def load_and_preprocess_stix_data(filepath: str) -> pd.DataFrame:
     """
     loads stix flare data from csv and optionally applies light travel time correction
     """
@@ -94,32 +91,9 @@ def load_and_preprocess_stix_data(filepath: str, use_time_correction: bool) -> p
     stix['start_utc'] = pd.to_datetime(stix['start_UTC']).dt.tz_localize('UTC')
     stix['end_utc'] = pd.to_datetime(stix['end_UTC']).dt.tz_localize('UTC')
     stix = stix[stix['visible_from_earth']].reset_index(drop=True)
-
-    stix['time_correction'] = calculate_time_correction(stix)
-
-    if use_time_correction:
-        stix['mwa_start_utc'] = stix['start_utc'] + pd.to_timedelta(stix['time_correction'], unit='s')
-        stix['mwa_end_utc'] = stix['end_utc'] + pd.to_timedelta(stix['time_correction'], unit='s')
-    else:
-        stix['mwa_start_utc'] = stix['start_utc']
-        stix['mwa_end_utc'] = stix['end_utc']
-
-    stix['flare_duration_sec'] = (stix['mwa_end_utc'] - stix['mwa_start_utc']).dt.total_seconds()
+    stix['flare_duration_sec'] = (stix['end_utc'] - stix['start_utc']).dt.total_seconds()
 
     return stix
-
-
-def calculate_time_correction(stix_data: pd.DataFrame) -> pd.Series:
-    """
-    calculates light travel time difference between solar orbiter and earth (in seconds)
-    """
-
-    times = pd.to_datetime(stix_data['peak_UTC']).dt.tz_localize('UTC')
-    earth_distance_au = u.Quantity(earth_distance(times), u.AU)
-    stix_distance_au = u.Quantity(stix_data['solo_position_AU_distance'], u.AU)
-
-    diff = earth_distance_au - stix_distance_au
-    return (diff.to(u.m) / c).value
 
 
 def analyze_and_filter_flares(stix_data: pd.DataFrame, mwa_data: pd.DataFrame, mwa_location: LocationInfo):
@@ -133,7 +107,7 @@ def analyze_and_filter_flares(stix_data: pd.DataFrame, mwa_data: pd.DataFrame, m
 
     # keep core columns (additional columns added later)
     flares_df = flares_df[[
-        'flare_id', 'GOES_class', 'stix_start_UTC', 'stix_end_UTC', 'mwa_start_UTC', 'mwa_end_UTC', 'flare_duration_sec', 'overlap_percentage'
+        'flare_id', 'GOES_class', 'start_UTC', 'end_UTC', 'flare_duration_sec', 'overlap_percentage'
     ]].reset_index(drop=True)
 
     return flares_df, num_samples
@@ -149,7 +123,7 @@ def analyze_flare_data(stix: pd.DataFrame, mwa_data: pd.DataFrame, mwa_location:
     num_samples['num_of_matching_observations'] = 0
 
     for _, flare_row in stix.iterrows():
-        flare_start, flare_end = flare_row['mwa_start_utc'], flare_row['mwa_end_utc']
+        flare_start, flare_end = flare_row['start_utc'], flare_row['end_utc']
         flare_duration = flare_row['flare_duration_sec']
 
         overlap = calculate_overlap(mwa_data, flare_start, flare_end, mwa_location)
@@ -158,10 +132,8 @@ def analyze_flare_data(stix: pd.DataFrame, mwa_data: pd.DataFrame, mwa_location:
         time_overlap_data.append({
             'flare_id': flare_row['flare_id'],
             'GOES_class': flare_row['GOES_class_time_of_flare'],
-            'stix_start_UTC': flare_row['start_utc'],
-            'stix_end_UTC': flare_row['end_utc'],
-            'mwa_start_UTC': flare_row['mwa_start_utc'],
-            'mwa_end_UTC': flare_row['mwa_end_utc'],
+            'start_UTC': flare_row['start_utc'],
+            'end_UTC': flare_row['end_utc'],
             'flare_duration_sec': int(flare_duration),
             'overlap_duration_sec': int(overlap.total_seconds()),
             'overlap_percentage': overlap_percentage
@@ -265,8 +237,8 @@ def attach_mwa_and_calibrator_info(flares_df: pd.DataFrame, mwa_data: pd.DataFra
     twelve_hours = timedelta(hours=12)
 
     for idx, row in flares_df.iterrows():
-        flare_start = pd.to_datetime(row['mwa_start_UTC'])
-        flare_end = pd.to_datetime(row['mwa_end_UTC'])
+        flare_start = pd.to_datetime(row['start_UTC'])
+        flare_end = pd.to_datetime(row['end_UTC'])
 
         # observations overlapping the flare
         matching_data = mwa_data[(mwa_data['starttime_utc'] <= flare_end) & (mwa_data['stoptime_utc'] >= flare_start)]

@@ -64,6 +64,9 @@ def create_jobs(observations, job_info):
 
 
 def process_jobs(jobs):
+    """
+    process job queue for mwa asvo downloads
+    """
     try:
         process_mwa_asvo_jobs(jobs)
     except Exception as e:
@@ -86,7 +89,9 @@ def process_mwa_asvo_jobs(jobs):
 
 
 def initialize_settings():
-    """Sets up the necessary environment for the project."""
+    """
+    sets up the necessary environment for the project
+    """
      # setup project root and load environment variables
     rootutils.setup_root(Path(__file__).resolve(), indicator=".project-root", pythonpath=True)
     load_dotenv()
@@ -104,6 +109,9 @@ def initialize_settings():
 
 
 def initialize_queues_and_locks():
+    """
+    initialize queues and locks for threading
+    """
     submit_lock = RLock()
     download_queue = Queue()
     result_queue = Queue()
@@ -112,6 +120,9 @@ def initialize_queues_and_locks():
 
 
 def login_and_submit_jobs(params, download_queue, status_queue, jobs_to_submit):
+    """
+    login and submit jobs to mwa asvo
+    """
     try:
         session = Session.login(*params)
         status_queue.put("Connected to MWA ASVO.")
@@ -123,12 +134,18 @@ def login_and_submit_jobs(params, download_queue, status_queue, jobs_to_submit):
 
 
 def start_status_thread(status_queue):
+    """
+    start background status monitoring thread
+    """
     status_thread = Thread(target=status_func, args=(status_queue,))
     status_thread.daemon = True
     status_thread.start()
 
 
 def initialize_notifier(params, sslopt, submit_lock, jobs_list, download_queue, result_queue, status_queue, verbose):
+    """
+    initialize notifier for job updates
+    """
     try:
         notify = Notify.login(*params, sslopt=sslopt)
         status_queue.put("Connected to MWA ASVO Notifier.")
@@ -153,6 +170,9 @@ def initialize_notifier(params, sslopt, submit_lock, jobs_list, download_queue, 
 
 
 def start_download_threads(submit_lock, jobs_list, download_queue, result_queue, status_queue, session, data_path):
+    """
+    start download threads for data products
+    """
     threads = []
     for _ in range(len(jobs_list)):
         t = Thread(
@@ -174,6 +194,9 @@ def start_download_threads(submit_lock, jobs_list, download_queue, result_queue,
 
 
 def handle_results(submit_lock, jobs_list, result_queue, download_queue, threads):
+    """
+    handle completed job results
+    """
     results = []
     while True:
         with submit_lock:
@@ -198,6 +221,9 @@ def handle_results(submit_lock, jobs_list, result_queue, download_queue, threads
 
 
 def cleanup(notify, threads, result_queue, status_queue, results):
+    """
+    cleanup resources and threads after jobs
+    """
     notify.close()
     for t in threads:
         t.join()
