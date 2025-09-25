@@ -129,7 +129,7 @@ All observations are already downloaded and are located on the /mnt/nas05/data02
 
 ---
 
-## Article
+## Paper
 
 Start of the paper containing introduction, detailed related-work and methodology is located in the _results folder.
 
