@@ -11,6 +11,7 @@ and the [MWA](https://www.mwatelescope.org/) (Murchison Widefield Array).
 - [Environment Setup](#environment-setup)
 - [Repository Layout](#repository-layout)
 - [Data](#data)
+- [Paper](#paper)
 - [Known Issues / TODO](#known-issues--todo)
 
 ---
