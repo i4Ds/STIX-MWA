@@ -10,11 +10,13 @@ and the [MWA](https://www.mwatelescope.org/) (Murchison Widefield Array).
 - [Overview](#overview)
 - [Environment Setup](#environment-setup)
 - [Repository Layout](#repository-layout)
+- [Data](#data)
 - [Known Issues / TODO](#known-issues--todo)
 
 ---
 
 ## Overview
+
 This project integrates STIX and MWA observations to:
 - identify overlapping solar flare events,
 - download and preprocess MWA visibilities,
@@ -117,6 +119,18 @@ A sample `.env.example` file is provided. Copy it to `.env` and fill in required
 - `plot_flare.py` – visualization helpers.
 - `utils.py` – shared helpers.
 - `calibration.py`, `selfcal.py`, `mwa_imaging.py` – calibration and imaging routines.
+
+---
+
+## Data
+
+All observations are already downloaded and are located on the /mnt/nas05/data02/predrag/data/mwa_data
+
+---
+
+## Article
+
+Start of the paper containing introduction, detailed related-work and methodology is located in the _results folder.
 
 ---
 
