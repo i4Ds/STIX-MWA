@@ -29,14 +29,17 @@ from astropy import units as u
 from astropy.coordinates import SkyCoord, get_sun
 from astropy.time import Time
 
-TAP_URL = "http://vo.mwatelescope.org/mwa_asvo/tap"  # as in mwa-demo 01_tap.py
+TAP_URL = "https://vo.mwatelescope.org/mwa_asvo/tap"  # mwa-demo 01_tap.py (http now redirects)
 LIGHT_S_PER_AU = (1 * u.au / (299792.458 * u.km / u.s)).to(u.s).value  # ~499.005 s
 
 # Columns we would like from mwa.observation. Only those that actually exist on
 # the server are requested (checked with a TOP 1 query), so nothing is assumed.
 WANTED = [
-    "obs_id", "starttime_utc", "stoptime_utc", "obsname", "projectid",
-    "ra_pointing", "dec_pointing", "sun_elevation", "sun_pointing_distance",
+    "obs_id", "starttime_utc", "stoptime_utc", "duration", "obsname", "projectid",
+    "projectshortname", "ra_pointing", "dec_pointing", "gridpoint_name",
+    "sun_elevation", "sun_pointing_distance", "center_frequency_mhz",
+    "first_channel_lowest_frequency_mhz", "last_channel_highest_frequency_mhz",
+    "dataqualityname", "calibration",
     "mwa_array_configuration", "channel_numbers_csv", "freq_res", "int_time",
     "good_tiles", "dataquality", "gpubox_files_archived",
     "total_archived_data_bytes", "deleted_flag", "mode",
@@ -107,10 +110,13 @@ def add_times_and_sun(df):
     df["duration_s"] = (stop - start).to_value(u.s)
 
     mid = start + (stop - start) / 2
+    # Geocentric Sun direction. Do not transform_to("icrs"): that moves the
+    # origin to the barycentre and gives a meaningless direction for the Sun.
     sun = get_sun(mid)
+    sun_dir = SkyCoord(sun.ra, sun.dec, frame="icrs")
     point = SkyCoord(df["ra_pointing"].values * u.deg, df["dec_pointing"].values * u.deg,
                      frame="icrs")
-    df["sun_sep_deg"] = point.separation(sun.transform_to("icrs")).deg
+    df["sun_sep_deg"] = point.separation(sun_dir).deg
     if "obsname" in df:
         df["name_says_sun"] = df["obsname"].astype(str).str.contains("sun|solar", case=False)
     return df
