@@ -107,6 +107,7 @@ A sample `.env.example` file is provided. Copy it to `.env` and fill in required
 ## Repository Layout
 
 - `src/find_flares_in_mwa.py` – queries STIX flare list and checks overlap with MWA obs times.
+- `src/mwa_stix_overlap.py` – 2026 rework of the flare/MWA match: Sun-pointed obs from any project (not only G0002), STIX science flare list to 2026-02-28, Earth light-travel-time correction. Two steps: `mwa` (TAP query) and `match`.
 - `src/get_mwa_data.py` – downloads raw data from MWA ASVO.
 - `src/compare_mwa_stix_locations.py` – cross-comparison of event positions.
 - `src/plot.py` – generates light curves and spectrogram plots.
