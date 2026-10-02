@@ -27,3 +27,26 @@ Caveats
 - G0060 (IPS survey) obs are 8–16 s snapshots near, not at, the Sun.
 - STIX flare locations for summer 2025 have a known imaging issue (list README).
 - GOES class is the list's STIX-based estimate (`goes_estimated_mean_class`).
+
+## Full STIX data center list (2026-10-02)
+
+`stix_dc_flares_with_mwa.csv`: same matching, but with the full flare list
+from the STIX data center (`python src/mwa_stix_overlap.py stixdc`,
+104,743 flares, 2021-02-01 to 2026-10-01) and MWA obs up to 2026-10-02
+(31,737 Sun obs). Earth shift from the data center ephemeris
+(`light_time_diff`, SPICE); agrees with the Hayes-based formula to < 0.4 s.
+No flare locations yet; `cfl_x/y_arcsec` is the data center's CFL location
+where it exists. Column `in_hayes_list` marks flares also in the Hayes list.
+
+Comparison, up to 2026-02-28:
+- Data center 93,892 flares; Hayes 33,076, all of them in the data center
+  list with identical ids and times. Hayes appears to keep flares with
+  4–10 keV QL peak ≥ ~1,000 counts/4 s (Hayes minimum 1,076; 99 % of the
+  rest are below 991). Inferred from the data, not from the list docs.
+- With MWA Sun obs: 8,748 flares (data center) vs 4,354 (Hayes). All 4,354
+  Hayes flares are in the data center result; the extra 4,394 are weak
+  (3,761 est. GOES B, 633 without estimate; median 431 vs 3,967 counts).
+- After 2026-02-28 (data center only): 1,119 more flares, 20 est. M class.
+  Caution: `goes_est_class` is from STIX counts; where the real GOES class
+  (`goes_class_at_flare`) is much lower, the flare is probably not visible
+  from Earth (not checked yet).

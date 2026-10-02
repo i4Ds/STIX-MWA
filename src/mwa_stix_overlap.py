@@ -8,11 +8,15 @@ Step 1  MWA: query the MWA ASVO TAP service (same endpoint and pyvo approach as
 Step 2  STIX: read the STIX science flare list (Hayes et al.,
         github.com/hayesla/stix_flarelist_science) and convert the Solar Orbiter
         times to Earth-arrival times.
+        Alternative (step "stixdc"): the full STIX data center flare list via
+        stixdcpy, with the Earth shift taken from the data center ephemeris
+        (light_time_diff = Sun-Earth minus Sun-SolO light time, SPICE).
 Step 3  Match flare intervals (padded by --pad seconds) against MWA observation
         intervals and write the pairs to CSV.
 
 Usage
   python mwa_stix_overlap.py mwa  [--start 2021-01-01] [--out mwa_sun_obs.csv]
+  python mwa_stix_overlap.py stixdc [--start 2021-02-01] [--out stix_dc_flares.csv]
   python mwa_stix_overlap.py match --stix STIX_flarelist_...csv \
          [--mwa mwa_sun_obs.csv] [--out mwa_stix_overlap.csv]
 
@@ -138,16 +142,46 @@ def cmd_mwa(args):
 # -------------------------------------------------------------------------- STIX
 def load_stix(path):
     s = pd.read_csv(path)
-    t_start = Time(list(s["start_UTC"]))
-    # Earth-Sun distance from astropy (GCRS distance of the Sun)
-    d_earth_au = get_sun(t_start).distance.to_value(u.au)
-    # photons from the Sun reach Earth later than Solar Orbiter by
-    # (d_Earth - d_SolO) / c  (radial approximation, flare near disk centre)
-    s["earth_shift_s"] = (d_earth_au - s["solo_position_AU_distance"]) * LIGHT_S_PER_AU
+    if "earth_shift_s" not in s:  # Hayes list: compute from SolO distance
+        t_start = Time(list(s["start_UTC"]))
+        # Earth-Sun distance from astropy (GCRS distance of the Sun)
+        d_earth_au = get_sun(t_start).distance.to_value(u.au)
+        # photons from the Sun reach Earth later than Solar Orbiter by
+        # (d_Earth - d_SolO) / c  (radial approximation, flare near disk centre)
+        s["earth_shift_s"] = (d_earth_au - s["solo_position_AU_distance"]) * LIGHT_S_PER_AU
     for c in ["start_UTC", "peak_UTC", "end_UTC"]:
         s[c.replace("_UTC", "_earth")] = (pd.to_datetime(s[c])
                                           + pd.to_timedelta(s["earth_shift_s"], unit="s"))
     return s
+
+
+def cmd_stixdc(args):
+    """Full flare list from the STIX data center, with the Earth shift."""
+    from stixdcpy.net import Request
+
+    edges = pd.date_range(args.start, args.stop, freq="SMS")
+    edges = edges.append(pd.DatetimeIndex([pd.Timestamp(args.stop)]))
+    fmt = "%Y-%m-%dT%H:%M:%S"
+    parts, eph = [], []
+    for a, b in zip(edges[:-1], edges[1:]):
+        r = Request.fetch_flare_list(a.strftime(fmt), b.strftime(fmt))
+        if r is None:
+            sys.exit(f"flare list request failed for {a}")
+        parts.append(pd.DataFrame(list(r)))
+        steps = max(1, int((b - a) / pd.Timedelta(hours=6)))
+        e = Request.request_ephemeris(a.strftime(fmt), b.strftime(fmt), steps=steps)
+        eph.append(pd.DataFrame({"utc": pd.to_datetime(e["utc"]).tz_localize(None),
+                                 "shift": e["light_time_diff"],
+                                 "sun_solo_r": e["sun_solo_r"]}))
+        log(f"{a.date()}  {len(parts[-1]):5d} flares")
+    s = pd.concat(parts).drop_duplicates("flare_id").sort_values("start_UTC")
+    e = pd.concat(eph).drop_duplicates("utc").sort_values("utc")
+    t = pd.to_datetime(s["start_UTC"]).values.astype("int64")
+    te = e["utc"].values.astype("int64")
+    s["earth_shift_s"] = np.interp(t, te, e["shift"].values)
+    s["solo_position_AU_distance"] = np.interp(t, te, e["sun_solo_r"].values)
+    s.to_csv(args.out, index=False)
+    log(f"{len(s)} flares {s.start_UTC.min()[:10]} to {s.start_UTC.max()[:10]} -> {args.out}")
 
 
 # ------------------------------------------------------------------------- match
@@ -174,7 +208,8 @@ def match(stix, mwa, pad_s):
     keep_s = ["flare_id", "start_UTC", "peak_UTC", "end_UTC", "start_earth", "peak_earth",
               "end_earth", "earth_shift_s", "4-10 keV", "25-50 keV", "att_in",
               "visible_from_earth", "hpc_x_earth", "hpc_y_earth",
-              "GOES_class_time_of_flare", "goes_estimated_mean_class"]
+              "GOES_class_time_of_flare", "GOES_class", "goes_estimated_mean_class",
+              "CFL_X_arcsec", "CFL_Y_arcsec", "LC0_PEAK_COUNTS_4S"]
     keep_s = [c for c in keep_s if c in stix]
     a = stix.iloc[fi][keep_s].reset_index(drop=True)
     b = mwa.iloc[mj].reset_index(drop=True).add_prefix("mwa_")
@@ -209,6 +244,11 @@ def main():
                    help="max pointing-centre to Sun separation, deg")
     m.add_argument("--out", default="mwa_sun_obs.csv")
     m.set_defaults(func=cmd_mwa)
+    d = sub.add_parser("stixdc", help="full STIX data center flare list + Earth shift")
+    d.add_argument("--start", default="2021-02-01")
+    d.add_argument("--stop", default=Time.now().iso[:10])
+    d.add_argument("--out", default="stix_dc_flares.csv")
+    d.set_defaults(func=cmd_stixdc)
     x = sub.add_parser("match", help="cross-match STIX flares with MWA Sun obs")
     x.add_argument("--stix", required=True)
     x.add_argument("--mwa", default="mwa_sun_obs.csv")
