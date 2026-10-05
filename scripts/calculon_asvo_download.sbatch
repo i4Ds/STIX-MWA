@@ -31,6 +31,7 @@ DEST="${DEST:-/mnt/nas05/data02/MWA_data/data/mwa_data2}"
 KEYFILE="${KEYFILE:-$HOME/.config/mwa_asvo/api_key}"
 SCRIPT="${SCRIPT:-$HOME/mwa/asvo-download.sbatch}"   # $0 is a spool copy under Slurm
 RESUB="${RESUB:-0}"
+child=""
 MAX_RESUB="${MAX_RESUB:-5}"
 
 [[ -r "$KEYFILE" ]] || { echo "missing $KEYFILE"; exit 1; }
@@ -54,9 +55,18 @@ trap resubmit USR1
 gs() { singularity exec -B /mnt/nas05/data02 "$MWA_DEMO_SIF" giant-squid "$@"; }
 
 echo "$(date -Is) node=$(hostname) dest=$DEST obsids=$OBSIDS resub=$RESUB"
-gs list $OBSIDS
+# `giant-squid wait` takes job IDs only, so poll the list until every obsid is Ready.
+n=$(wc -w <<<"$OBSIDS")
+while :; do
+  table=$(gs list $OBSIDS)
+  echo "$table"
+  ready=$(grep -c "| Ready " <<<"$table" || true)
+  (( ready >= n )) && break
+  grep -qE "\| (Error|Cancelled|Expired) " <<<"$table" && { echo "an ASVO job failed"; exit 1; }
+  # sleep in the background so the USR1 trap can fire
+  sleep 300 & child=$!; wait "$child"
+done
 # Run in the background and wait, so the USR1 trap can fire during long steps.
-gs wait $OBSIDS & child=$!; wait "$child"
 gs download --keep-tar --concurrent-downloads 3 -d "$DEST" $OBSIDS & child=$!; wait "$child"
 echo "$(date -Is) done"
 ls -lh "$DEST"
