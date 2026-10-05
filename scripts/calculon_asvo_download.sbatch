@@ -20,9 +20,9 @@ set -euo pipefail
 source "$HOME/mwa/mwa-env.sh"
 
 OBSIDS="${OBSIDS:-1419137296 1419161128 1419109008}"
-# mwa_data (the shared archive) belongs to andrea_zanelli and is not writable for
-# us; this sibling folder is on the same NAS and keeps the same file naming.
-DEST="${DEST:-/mnt/nas05/data02/MWA_data/data/mwa_data_sabbatical}"
+# mwa_data (the shared archive) belongs to andrea_zanelli; mwa_data2 is André's
+# folder next to it on the same NAS, with the same file naming.
+DEST="${DEST:-/mnt/nas05/data02/MWA_data/data/mwa_data2}"
 KEYFILE="${KEYFILE:-$HOME/.config/mwa_asvo/api_key}"
 
 [[ -r "$KEYFILE" ]] || { echo "missing $KEYFILE"; exit 1; }
