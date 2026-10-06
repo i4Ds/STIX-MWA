@@ -34,13 +34,35 @@ def scaled(img, pct=(5, 99.5)):
     return np.clip((img - lo) / (hi - lo), 0, 1)
 
 
-def mwa_spectrogram(path: Path, start: Time, end: Time) -> Spectrogram:
+def mwa_spectrogram(path: Path, start: Time, end: Time, step_mhz: float = 0.32) -> Spectrogram:
+    """MWA npz as coarse channels, each time step filled from its nearest available channel.
+
+    The MWA observes 24 separate 1.28 MHz coarse channels (a "picket fence"), and the
+    channel list can change between observations. Fine channels are averaged per coarse
+    channel, then every frequency on a regular grid takes the value of the nearest coarse
+    channel present at that time, within that time's channel range.
+    """
     d = np.load(path)
     time = (d["unix"] * 1e3).astype("datetime64[ms]")
     keep = (time >= start.datetime64) & (time <= end.datetime64)
+    freq, amp = d["freq_mhz"], d["amp"][:, keep]
     with np.errstate(all="ignore"):
-        rel = np.log10(d["amp"][:, keep] / np.nanmedian(d["amp"][:, keep], axis=1, keepdims=True))
-    return Spectrogram("MWA", rel, d["freq_mhz"], time[keep])
+        rel = np.log10(amp / np.nanmedian(amp, axis=1, keepdims=True))
+        coarse = np.round(freq / 1.28).astype(int)
+        ids = np.unique(coarse)
+        cfreq = np.array([freq[coarse == c].mean() for c in ids])
+        cdata = np.array([np.nanmean(rel[coarse == c], axis=0) for c in ids])
+    grid = np.arange(cfreq.min(), cfreq.max() + step_mhz / 2, step_mhz)
+    out = np.full((grid.size, cdata.shape[1]), np.nan)
+    for k in range(cdata.shape[1]):
+        ok = np.isfinite(cdata[:, k])
+        if not ok.any():
+            continue
+        f, v = cfreq[ok], cdata[ok, k]
+        inside = (grid >= f.min() - step_mhz) & (grid <= f.max() + step_mhz)
+        nearest = np.abs(grid[inside, None] - f[None, :]).argmin(axis=1)
+        out[inside, k] = v[nearest]
+    return Spectrogram("MWA (coarse channels, nearest-channel fill)", out, grid, time[keep])
 
 
 def draw(ax, spec, img, cmap="inferno"):
