@@ -1,0 +1,19 @@
+# STIX imaging (stixpy + xrayvision) and reprojection to Earth view.
+# Runs on macOS and Linux; the CASA/WSClean stack stays in environment.yml.
+#   conda env create -f environment-stix-imaging.yml
+name: stix-mwa-imaging
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - numpy
+  - pandas
+  - scipy
+  - matplotlib
+  - astropy
+  - sunpy
+  - reproject
+  - pip:
+      - stixpy
+      - stixdcpy
