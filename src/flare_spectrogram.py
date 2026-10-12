@@ -13,6 +13,7 @@ per instrument on its own scale. Times are at Earth.
         --out _results/plots/flare_20220930_spectrogram.png
 """
 import argparse
+import warnings
 from pathlib import Path
 
 import matplotlib.dates as mdates
@@ -34,35 +35,45 @@ def scaled(img, pct=(5, 99.5)):
     return np.clip((img - lo) / (hi - lo), 0, 1)
 
 
-def mwa_spectrogram(path: Path, start: Time, end: Time, step_mhz: float = 0.32) -> Spectrogram:
-    """MWA npz as coarse channels, each time step filled from its nearest available channel.
-
-    The MWA observes 24 separate 1.28 MHz coarse channels (a "picket fence"), and the
-    channel list can change between observations. Fine channels are averaged per coarse
-    channel, then every frequency on a regular grid takes the value of the nearest coarse
-    channel present at that time, within that time's channel range.
-    """
+def mwa_coarse(path: Path, start: Time, end: Time):
+    """Fine channels averaged per coarse channel: (centre MHz, (nchan, ntime) log10 of amp/median, time, fine freqs)."""
     d = np.load(path)
     time = (d["unix"] * 1e3).astype("datetime64[ms]")
     keep = (time >= start.datetime64) & (time <= end.datetime64)
     freq, amp = d["freq_mhz"], d["amp"][:, keep]
-    with np.errstate(all="ignore"):
+    coarse = np.round(freq / 1.28).astype(int)
+    ids = np.unique(coarse)
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
         rel = np.log10(amp / np.nanmedian(amp, axis=1, keepdims=True))
-        coarse = np.round(freq / 1.28).astype(int)
-        ids = np.unique(coarse)
-        cfreq = np.array([freq[coarse == c].mean() for c in ids])
         cdata = np.array([np.nanmean(rel[coarse == c], axis=0) for c in ids])
-    grid = np.arange(cfreq.min(), cfreq.max() + step_mhz / 2, step_mhz)
+    cfreq = np.array([freq[coarse == c].mean() for c in ids])
+    return cfreq, cdata, time[keep], freq, coarse, ids
+
+
+def mwa_spectrogram(path: Path, start: Time, end: Time, fine_mhz: float = 0.16) -> Spectrogram:
+    """MWA npz with each coarse channel at its true frequency and width; gaps left empty.
+
+    The MWA observes 24 separate 1.28 MHz coarse channels (a "picket fence") that are
+    not evenly spaced, and the channel list changes between observations (here at
+    04:27:34). Fine channels are averaged per coarse channel, and that value fills the
+    channel's own 1.28 MHz on a regular 0.16 MHz grid. Frequencies or times without a
+    channel stay NaN and are drawn empty; nothing is interpolated.
+    """
+    cfreq, cdata, time, freq, coarse, ids = mwa_coarse(path, start, end)
+    grid = np.arange(freq.min(), freq.max() + fine_mhz / 2, fine_mhz)
     out = np.full((grid.size, cdata.shape[1]), np.nan)
-    for k in range(cdata.shape[1]):
-        ok = np.isfinite(cdata[:, k])
-        if not ok.any():
-            continue
-        f, v = cfreq[ok], cdata[ok, k]
-        inside = (grid >= f.min() - step_mhz) & (grid <= f.max() + step_mhz)
-        nearest = np.abs(grid[inside, None] - f[None, :]).argmin(axis=1)
-        out[inside, k] = v[nearest]
-    return Spectrogram("MWA (coarse channels, nearest-channel fill)", out, grid, time[keep])
+    for c, v in zip(ids, cdata):
+        out[np.round((freq[coarse == c] - grid[0]) / fine_mhz).astype(int)] = v
+    return Spectrogram("MWA, true frequency axis (24 × 1.28 MHz channels, gaps empty)", out, grid, time)
+
+
+def mwa_channel_rows(path: Path, start: Time, end: Time) -> Spectrogram:
+    """Same data with one equal-height row per coarse channel (y = channel index, labelled in MHz)."""
+    cfreq, cdata, time, *_ = mwa_coarse(path, start, end)
+    s = Spectrogram("MWA, one row per coarse channel (axis not linear in frequency)", cdata, np.arange(cfreq.size), time)
+    s.labels = cfreq
+    return s
 
 
 def draw(ax, spec, img, cmap="inferno"):
@@ -92,12 +103,16 @@ def main():
         if s is not None:
             s.station = key
             specs.append((s, scaled(s.background_subtracted())))
+    rows = []
     if args.mwa and args.mwa.exists():
         m = mwa_spectrogram(args.mwa, start, end)
         specs.append((m, scaled(m.data, (2, 99.8))))
+        c = mwa_channel_rows(args.mwa, start, end)
+        rows.append((c, scaled(c.data, (2, 99.8))))
 
-    fig, axs = plt.subplots(1 + len(specs), 1, figsize=(14, 3.6 + 2.0 * len(specs)), sharex=True,
-                            gridspec_kw={"height_ratios": [2.2] + [1] * len(specs)})
+    nrow = len(specs) + len(rows)
+    fig, axs = plt.subplots(1 + nrow, 1, figsize=(14, 3.6 + 2.0 * nrow + 1.2 * len(rows)), sharex=True,
+                            gridspec_kw={"height_ratios": [2.2] + [1] * len(specs) + [1.6] * len(rows)})
     top = axs[0]
     for spec, img in specs:
         draw(top, spec, img)
@@ -110,8 +125,17 @@ def main():
     top.get_yaxis().set_minor_formatter(plt.NullFormatter())
     top.set_ylabel("MHz")
     top.set_title(args.title or "combined, each instrument scaled to its own percentiles", loc="left", fontsize=10)
-    for ax, (spec, img) in zip(axs[1:], specs):
+    for ax, (spec, img) in zip(axs[1:], specs + rows):
         draw(ax, spec, img)
+        if np.isnan(img).any():
+            ax.set_facecolor("0.85")
+        if hasattr(spec, "labels"):
+            ax.set_ylim(-0.5, spec.freq.size - 0.5)
+            step = max(1, spec.freq.size // 15)
+            ax.set_yticks(spec.freq[::step], [f"{f:.1f}" for f in spec.labels[::step]], fontsize=7)
+            ax.set_ylabel("MHz (channel centre)")
+            ax.set_title(spec.station, loc="left", fontsize=9)
+            continue
         ax.set_ylim(spec.freq.min(), spec.freq.max())
         ax.set_ylabel("MHz")
         ax.set_title(f"{spec.station}  {spec.freq.min():.0f}–{spec.freq.max():.0f} MHz", loc="left", fontsize=9)
