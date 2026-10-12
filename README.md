@@ -1,5 +1,9 @@
 # STIX–MWA Data Analysis
 
+Part of the [solar-radio-imaging-spectroscopy](https://github.com/i4Ds/solar-radio-imaging-spectroscopy)
+sabbatical (FHNW / i4DS). MWA imaging itself lives in
+[solar-burst-multiview](https://github.com/i4Ds/solar-burst-multiview).
+
 This repository provides tools for analyzing and comparing data from 
 [STIX](https://datacenter.stix.i4ds.net/) (Spectrometer/Telescope for Imaging X-rays aboard Solar Orbiter) 
 and the [MWA](https://www.mwatelescope.org/) (Murchison Widefield Array).
