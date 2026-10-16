@@ -4,20 +4,32 @@
 Step "lists"     download the monthly e-Callisto burst lists (FHNW server), parse
                  them and match each burst with MWA Sun observations (output of
                  `mwa_stix_overlap.py mwa`).
-Step "strength"  measure each burst in the Australia-ASSA spectrometers
-                 (ASSA_56, ASSA_57; 108-377 MHz), only while MWA was observing.
+Step "strength"  measure each burst in the Australia-ASSA spectrometers that
+                 cover the MWA band, only while MWA was observing.
 Step "rank"      rank bursts and list the MWA obs that contain the burst peak.
 Step "vet"       plot ASSA spectrograms of the top bursts for a visual check.
+Step "calculon"  list the MWA obsids already on calculon (one `ls` over ssh).
+Step "candidates" join the ranking with MWA metadata, calibrators and the
+                 calculon list; assign tiers A/B/C (no STIX at this stage).
+Step "pictures"  one e-Callisto picture per tier A/B candidate, marking what
+                 would be imaged, plus an HTML gallery for review.
+
+ASSA receivers in the MWA band: ASSA_60 (108-524 MHz) until December 2023,
+then ASSA_56 and ASSA_57 (108-377 MHz). ASSA_62/63 are 15-88 MHz and not used.
 
 Strength: per time step, the 75th percentile across 110-300 MHz channels of
 (data - per-channel median over the window +-10 min), smoothed over 3 samples;
-the peak of that inside the MWA observing intervals. The ranking value is the
-smaller of ASSA_56 and ASSA_57, so both receivers must see the burst. Units are
-raw e-Callisto digits (relative, not calibrated flux).
+the peak of that inside the MWA observing intervals. With two receivers the
+ranking value is the smaller of the two, so both must see the burst; with one
+(ASSA_60 era) it is that receiver's value and the burst is flagged single_rx.
+Units are raw e-Callisto digits (relative, not calibrated flux), and ASSA_60
+digits are not on the same scale as ASSA_56/57.
 
-Why ASSA and not MRO: MRO_60 has a ~1 min full-band calibration block at fixed
-times (e.g. hh:00 and hh:30) and MRO_59 is dominated by RFI; both produced false
-peaks. Data within 5 s of the 15-min file boundaries is masked.
+Why not MRO: MRO is Metsähovi, Finland, where the Sun is low or down during
+MWA hours (about 00-08 UTC). MRO_60 also has a ~1 min full-band calibration
+block at fixed times (e.g. hh:00 and hh:30) and MRO_59 is dominated by RFI;
+both produced false peaks. Data within 5 s of the 15-min file boundaries is
+masked.
 
 Usage
   python ecallisto_mwa_bursts.py lists    --mwa mwa_sun_obs.csv [--out burst_mwa_pairs.csv]
@@ -46,7 +58,9 @@ import requests
 warnings.filterwarnings("ignore")
 
 BURST_LIST_URL = "http://soleil80.cs.technik.fhnw.ch/solarradio/data/BurstLists/2010-yyyy_Monstein"
-INSTS = {"ASSA_56": "*Australia-ASSA_*_56.fit.gz", "ASSA_57": "*Australia-ASSA_*_57.fit.gz"}
+INSTS = {"ASSA_56": "*Australia-ASSA_*_56.fit.gz", "ASSA_57": "*Australia-ASSA_*_57.fit.gz",
+         "ASSA_60": "*Australia-ASSA_*_60.fit.gz"}
+PAIR = ["ASSA_56", "ASSA_57"]
 F0, F1, EDGE_S = 110, 300, 5
 MAX_BURST = pd.Timedelta(minutes=60)
 
@@ -211,8 +225,14 @@ def cmd_rank(args):
             d[k], d[k + "_t"] = x["peak"], x["t_peak"]
         rows.append(d)
     s = pd.DataFrame(rows)
-    s["strength"] = s[list(INSTS)].min(axis=1)
-    s["t_peak"] = pd.to_datetime(s.ASSA_57_t.fillna(s.ASSA_56_t), format="mixed")
+    for k in INSTS:
+        if k not in s:
+            s[k], s[k + "_t"] = np.nan, None
+    both = s[PAIR].notna().all(axis=1)
+    s["n_rx"] = s[list(INSTS)].notna().sum(axis=1)
+    s["single_rx"] = ~both
+    s["strength"] = np.where(both, s[PAIR].min(axis=1), s[list(INSTS)].max(axis=1))
+    s["t_peak"] = pd.to_datetime(s.ASSA_57_t.fillna(s.ASSA_56_t).fillna(s.ASSA_60_t), format="mixed")
     p = read_pairs(args.pairs)
     s = s.merge(p.groupby("burst_idx").agg(start=("start", "first"), end=("end", "first"),
                                            type=("type", "first"), n_stations=("n_stations", "first"),
@@ -272,6 +292,250 @@ def cmd_vet(args):
     log(f"-> {args.out}")
 
 
+# --------------------------------------------------------------------- calculon
+CALCULON_DIRS = ["/mnt/nas05/data02/MWA_data/data/mwa_data", "/mnt/nas05/data02/MWA_data/data/mwa_data2"]
+
+
+def cmd_calculon(args):
+    """One `ls` of the MWA data directories on calculon (login node: no du/find)."""
+    import subprocess
+    out = subprocess.run(["ssh", "-o", "BatchMode=yes", "calculon", "ls " + " ".join(CALCULON_DIRS)],
+                         capture_output=True, text=True, check=True).stdout
+    ids = sorted({int(m) for m in re.findall(r"^(\d{10})_", out, re.M)})
+    with open(args.out, "w") as f:
+        f.write(f"# MWA obsids in {' '.join(CALCULON_DIRS)}, listed {pd.Timestamp.now(tz='UTC'):%Y-%m-%d}\n")
+        f.writelines(f"{i}\n" for i in ids)
+    log(f"{len(ids)} obsids on calculon -> {args.out}")
+
+
+def read_calculon(path):
+    return {int(l) for l in open(path) if l.strip() and not l.startswith("#")} if os.path.exists(path) else set()
+
+
+# ------------------------------------------------------------------- candidates
+CAL_COLS = ["obs_id", "starttime_utc", "obsname", "channel_numbers_csv", "total_archived_data_bytes"]
+
+
+def calibrators(days, cache):
+    """Archived calibrator obs (mwa.observation.calibration) within a day of each candidate day."""
+    import pyvo
+    from astropy.time import Time
+    have = pd.read_csv(cache) if os.path.exists(cache) else pd.DataFrame(columns=CAL_COLS + ["day"])
+    todo = sorted(set(days) - set(have.day.astype(str)))
+    if todo:
+        tap = pyvo.dal.TAPService("https://vo.mwatelescope.org/mwa_asvo/tap")
+        parts = [have]
+        for d in todo:
+            g0 = Time(pd.Timestamp(d) - pd.Timedelta(days=1)).gps
+            g1 = Time(pd.Timestamp(d) + pd.Timedelta(days=2)).gps
+            q = (f"SELECT {', '.join(CAL_COLS)} FROM mwa.observation WHERE obs_id >= {int(g0)} "
+                 f"AND obs_id < {int(g1)} AND calibration = 'True' AND deleted_flag != 'TRUE'")
+            t = tap.run_sync(q, maxrec=tap.hardlimit).to_table().to_pandas()
+            t["day"] = d
+            parts.append(t)
+            log(f"calibrators {d}: {len(t)}")
+        have = pd.concat(parts, ignore_index=True)
+        have.to_csv(cache, index=False)
+    have["t"] = pd.to_datetime(have.starttime_utc, format="mixed").dt.tz_localize(None)
+    return have.drop_duplicates("obs_id")
+
+
+def cmd_candidates(args):
+    s = pd.read_csv(args.ranking, parse_dates=["t_peak"])
+    s = s[s.mwa_obs_at_peak.notna()].copy()
+    s["rank"] = np.arange(1, len(s) + 1)
+    s["mwa_obs_id"] = s.mwa_obs_at_peak.astype(str).str.split()
+    s = s.explode("mwa_obs_id")
+    s["mwa_obs_id"] = s.mwa_obs_id.astype(float).astype(int)
+    m = pd.read_csv(args.mwa, parse_dates=["t_start", "t_stop"])
+    keep = ["obs_id", "t_start", "t_stop", "duration_s", "projectid", "obsname", "dataqualityname", "good_tiles",
+            "sun_elevation", "mwa_array_configuration", "channel_numbers_csv", "int_time", "freq_res",
+            "total_archived_data_bytes"]
+    c = s.merge(m[keep].add_prefix("mwa_"), on="mwa_obs_id", how="left")
+    c["on_calculon"] = c.mwa_obs_id.isin(read_calculon(args.calculon))
+    c["margin_s"] = np.minimum((c.t_peak - c.mwa_t_start).dt.total_seconds(),
+                               (c.mwa_t_stop - c.t_peak).dt.total_seconds())
+
+    cals = calibrators(sorted(c.t_peak.dt.strftime("%Y-%m-%d").unique()), args.cal_cache)
+    cals = cals[cals.total_archived_data_bytes.fillna(0) > 0]
+    on_calc = read_calculon(args.calculon)
+    best = []
+    for r in c.itertuples():
+        q = cals[cals.channel_numbers_csv == r.mwa_channel_numbers_csv]
+        if q.empty:
+            best.append((None, None, np.nan, False))
+            continue
+        dt = (q.t - r.t_peak).abs()
+        q = q.assign(dt_hr=dt.dt.total_seconds() / 3600, here=q.obs_id.isin(on_calc))
+        q = q[q.dt_hr <= 24].sort_values(["here", "dt_hr"], ascending=[False, True])
+        if q.empty:
+            best.append((None, None, np.nan, False))
+        else:
+            b = q.iloc[0]
+            best.append((int(b.obs_id), b.obsname, round(b.dt_hr, 1), bool(b.here)))
+    c["cal_obs_id"], c["cal_name"], c["cal_dt_hr"], c["cal_on_calculon"] = zip(*best)
+
+    typed = ~c.type.astype(str).str.strip().isin(["---", "", "nan"])
+    mwa_ok = ((c.mwa_total_archived_data_bytes.fillna(0) > 0) & (c.margin_s >= 8) & (c.mwa_duration_s >= 56)
+              & (c.mwa_dataqualityname == "Good") & (c.mwa_sun_elevation >= 30))
+    cal_ok = c.cal_obs_id.notna()
+    # strength thresholds in raw digits; ASSA_60 is on its own scale
+    thr = np.where(c.single_rx, args.thr60, args.thr)
+    strong, moderate = c.strength >= thr, c.strength >= thr / 2
+    a = strong & typed & (c.n_stations >= 3) & mwa_ok & cal_ok
+    b = ~a & moderate & (c.n_stations >= 2) & (c.margin_s >= 4) & (c.mwa_total_archived_data_bytes.fillna(0) > 0)
+    c["tier"] = np.select([a, b], ["A", "B"], "C")
+    c["why_not_A"] = [", ".join(k for k, ok in [("weak", st), ("untyped", ty), ("few stations", ns), ("MWA", mo),
+                                               ("no calibrator", co)] if not ok)
+                      for st, ty, ns, mo, co in zip(strong, typed, c.n_stations >= 3, mwa_ok, cal_ok)]
+    # Phase IIIb first, then data already on calculon. The archive labels everything from
+    # 2024-10-28 "Phase III"; all 256 tiles are correlated only from about April 2025 (2025B
+    # in the MWA wiki). No IIIb label exists, so IIIb here = Phase III from 2025-04-01 with
+    # > 128 good tiles (Dec 2024 has obs with 132-135 good tiles, before 256-tile correlation).
+    p3 = c.mwa_mwa_array_configuration.astype(str).str.contains("III")
+    c["phase"] = np.where(p3 & (c.mwa_good_tiles > 128) & (c.mwa_t_start >= "2025-04-01"), "IIIb",
+                          c.mwa_mwa_array_configuration.astype(str).str.replace("Phase ", "", regex=False))
+    c["phase3b"] = c.phase == "IIIb"
+    c = c.sort_values(["tier", "phase3b", "on_calculon", "strength"], ascending=[True, False, False, False])
+    # the burst lists can hold the same burst twice (e.g. typed and untyped); keep the best tier
+    c = c.drop_duplicates(["mwa_obs_id", "t_peak"])
+    cols = ["tier", "phase", "phase3b", "rank", "t_peak", "type", "strength", "single_rx", "n_rx", "n_stations", "mwa_obs_id",
+            "on_calculon", "mwa_projectid", "mwa_t_start", "mwa_duration_s", "margin_s", "mwa_mwa_array_configuration",
+            "mwa_channel_numbers_csv", "mwa_int_time", "mwa_freq_res", "mwa_good_tiles", "mwa_sun_elevation",
+            "mwa_dataqualityname", "cal_obs_id", "cal_name", "cal_dt_hr", "cal_on_calculon",
+            "why_not_A", "start", "end", "stations"]
+    c[cols].to_csv(args.out, index=False)
+    log(f"{len(c)} candidates: " + ", ".join(f"{k} {v}" for k, v in c.tier.value_counts().sort_index().items())
+        + f"; tier A on calculon {int((c.on_calculon & (c.tier == 'A')).sum())} -> {args.out}")
+
+
+# --------------------------------------------------------------------- pictures
+def channel_curves(d, chans):
+    """Per MWA coarse channel: ASSA excess divided by that frequency's noise (MAD over the
+    +-10 min window), as a time series averaged over the receivers. RFI stripes have a high
+    excess all the time and so a high noise, which keeps them from winning."""
+    out = {}
+    for df in d.values():
+        ex_ = df - df.median()
+        snr = ex_ / (1.4826 * ex_.abs().median()).replace(0, np.nan)
+        f = snr.columns.values.astype(float)
+        for ch in chans:
+            m = np.abs(f - ch * 1.28) <= 0.7
+            if m.any():
+                s = snr.loc[:, m].median(axis=1).rolling("4s").mean()
+                out.setdefault(ch, []).append(s)
+    return {ch: pd.concat(v, axis=1).mean(axis=1) for ch, v in out.items()}
+
+
+def proposal(d, r, chans):
+    """Channels and times to image. Series window: where the broadband excess stays above 25 % of
+    the peak (+-10 s, inside the obs). Channels: highest mean S/N over that window (top 3).
+    4 s image: where the best channel's 4 s mean S/N peaks inside the window."""
+    df = next(iter(d.values()))
+    bb = broadband(df)
+    t0 = t1 = r.t_peak
+    if bb is not None and not bb.empty:
+        pk = bb[(bb.index >= r.t_peak - pd.Timedelta(seconds=5)) & (bb.index <= r.t_peak + pd.Timedelta(seconds=5))].max()
+        above = bb >= 0.25 * pk
+        i = bb.index.get_indexer([r.t_peak], method="nearest")[0]
+        j0 = j1 = i
+        while j0 > 0 and above.iloc[j0 - 1]:
+            j0 -= 1
+        while j1 < len(bb) - 1 and above.iloc[j1 + 1]:
+            j1 += 1
+        t0, t1 = bb.index[j0], bb.index[j1]
+    t0 = max(t0 - pd.Timedelta(seconds=10), r.mwa_t_start)
+    t1 = min(t1 + pd.Timedelta(seconds=10), r.mwa_t_stop)
+    curves = channel_curves(d, chans)
+    score = pd.Series({ch: s[(s.index >= t0) & (s.index <= t1)].mean() for ch, s in curves.items()}).dropna()
+    score = score.sort_values(ascending=False)
+    if score.empty:
+        return None, [], r.t_peak, t0, t1
+    ch = int(score.index[0])
+    # keep the 4 s image >= 8 s inside the obs (the first seconds are flagged as quack time)
+    a = max(t0, r.mwa_t_start + pd.Timedelta(seconds=8)) + pd.Timedelta(seconds=4)
+    b = min(t1, r.mwa_t_stop - pd.Timedelta(seconds=8))
+    s = curves[ch][(curves[ch].index >= a) & (curves[ch].index <= b)]
+    t_img = s.idxmax() - pd.Timedelta(seconds=2) if not s.empty else r.t_peak   # rolling("4s") is right-labelled
+    return ch, [int(x) for x in score.index[:3]], t_img, t0, t1
+
+
+def cmd_pictures(args):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LinearSegmentedColormap
+    cmap = LinearSegmentedColormap.from_list(
+        "b", ["#ffffff", "#cde2fb", "#86b6ef", "#3987e5", "#1c5cab", "#0d366b"])
+    c = pd.read_csv(args.candidates, parse_dates=["t_peak", "mwa_t_start"])
+    keep = c.tier.isin(args.tiers.split(",")) | (c.phase3b & (c.strength >= args.iiib_min))
+    c = c[keep].head(args.n)
+    c["mwa_t_stop"] = c.mwa_t_start + pd.to_timedelta(c.mwa_duration_s, unit="s")
+    os.makedirs(args.outdir, exist_ok=True)
+
+    def get(r):
+        t0, t1 = r.t_peak - pd.Timedelta(minutes=10), r.t_peak + pd.Timedelta(minutes=10)
+        rx = PAIR if not r.single_rx else ["ASSA_60"]
+        return {k: load(k, t0, t1) for k in rx}
+    with ThreadPoolExecutor(6) as ex:
+        data = list(ex.map(get, list(c.itertuples())))
+    props = []
+    for r, d in zip(c.itertuples(), data):
+        d = {k: v.loc[:, (v.columns >= 108) & (v.columns <= 380)].astype(float)
+             for k, v in d.items() if v is not None and len(v) > 50}
+        chans = [int(x) for x in str(r.mwa_channel_numbers_csv).split(",") if x.strip().isdigit()]
+        if not d:
+            log(f"{r.t_peak} no ASSA data")
+            continue
+        ch, top3, t_img, s0, s1 = proposal(d, r, chans)
+        props.append(dict(tier=r.tier, mwa_obs_id=r.mwa_obs_id, t_peak=r.t_peak, channel=ch,
+                          freq_mhz=None if ch is None else round(ch * 1.28, 2),
+                          series_channels=" ".join(map(str, top3)), image_utc=t_img,
+                          image_4s=f"{t_img - pd.Timedelta(seconds=2):%H:%M:%S}-{t_img + pd.Timedelta(seconds=2):%H:%M:%S}",
+                          series_t0=s0, series_t1=s1, cal_obs_id=r.cal_obs_id, on_calculon=r.on_calculon))
+        fig, axs = plt.subplots(len(d), 2, figsize=(13, 2.9 * len(d) + 0.6), squeeze=False,
+                                constrained_layout=True, gridspec_kw=dict(width_ratios=[2, 1]))
+        fmin, fmax = (min(chans) - 0.5) * 1.28, (max(chans) + 0.5) * 1.28
+        for row, (k, df) in zip(axs, d.items()):
+            ex_ = df - df.median()
+            for ax, half in zip(row, [pd.Timedelta(minutes=10), pd.Timedelta(seconds=60)]):
+                w = ex_[(ex_.index >= r.t_peak - half) & (ex_.index <= r.t_peak + half)]
+                ax.pcolormesh(w.index, w.columns, w.T.values, cmap=cmap, vmin=0,
+                              vmax=max(5, np.nanpercentile(w.values, 99.7)), shading="nearest", rasterized=True)
+                ax.axvspan(max(r.mwa_t_start, w.index[0]), min(r.mwa_t_stop, w.index[-1]),
+                           facecolor="#eb6834", alpha=0.12, edgecolor="#eb6834", lw=1.5)
+                for fl in (fmin, fmax):
+                    ax.axhline(fl, color="#eb6834", lw=0.8, ls=":")
+                for k_, c_ in enumerate(top3):
+                    ax.axhline(c_ * 1.28, color="#d6262b", lw=1.2 if k_ == 0 else 0.7, ls="--" if k_ == 0 else ":")
+                ax.axvspan(max(s0, w.index[0]), min(s1, w.index[-1]), ymin=0, ymax=0.04, color="#d6262b")
+                ax.axvline(t_img, color="#d6262b", lw=0.8)
+                ax.set_xlim(w.index[0], w.index[-1])
+                ax.set_ylim(380, 108)
+                ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=3, maxticks=7 if half > pd.Timedelta(minutes=2) else 4))
+                ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M" if half > pd.Timedelta(minutes=2) else "%H:%M:%S"))
+                ax.tick_params(labelsize=8)
+            row[0].set_ylabel(f"{k}\nMHz", fontsize=8)
+        cal ="no calibrator" if pd.isna(r.cal_obs_id) else (
+            f"cal {int(r.cal_obs_id)} ({str(r.cal_name).split('_Ch')[0]}, {r.cal_dt_hr} h"
+            f"{', on calculon' if r.cal_on_calculon else ''})")
+        fig.suptitle(
+            f"Tier {r.tier}  {r.t_peak:%Y-%m-%d %H:%M:%S}  type {r.type}  strength {r.strength:g}"
+            f"{' (single rx)' if r.single_rx else ''}  {r.n_stations} stations\n"
+            f"MWA {r.mwa_obs_id} {r.mwa_projectid} {r.mwa_t_start:%H:%M:%S}+{r.mwa_duration_s:.0f}s "
+            f"Phase {r.phase} ({r.mwa_good_tiles:.0f} good tiles)  {'ON CALCULON' if r.on_calculon else 'not on calculon'}  {cal}\n"
+            f"Proposed: ch {ch} ({'' if ch is None else f'{ch * 1.28:.1f} MHz'}, red dashed), series channels "
+            f"{' '.join(map(str, top3))} (dotted); 4 s image at {t_img:%H:%M:%S} (red line); "
+            f"series {s0:%H:%M:%S}-{s1:%H:%M:%S} (red bar). Orange: MWA obs and band.",
+            x=0.01, ha="left", fontsize=9)
+        fn = os.path.join(args.outdir, f"{r.tier}_{r.t_peak:%Y%m%d_%H%M%S}_{r.mwa_obs_id}.png")
+        fig.savefig(fn, dpi=80)
+        plt.close(fig)
+        log(fn)
+    pd.DataFrame(props).to_csv(os.path.join(args.outdir, "proposals.csv"), index=False)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -297,6 +561,25 @@ def main():
     a.add_argument("--n", type=int, default=12)
     a.add_argument("--out", default="vet_top.png")
     a.set_defaults(func=cmd_vet)
+    a = sub.add_parser("calculon")
+    a.add_argument("--out", default="calculon_obsids.txt")
+    a.set_defaults(func=cmd_calculon)
+    a = sub.add_parser("candidates")
+    a.add_argument("--ranking", default="burst_ranking.csv")
+    a.add_argument("--mwa", default="mwa_sun_obs.csv")
+    a.add_argument("--calculon", default="calculon_obsids.txt")
+    a.add_argument("--cal-cache", default="calibrators.csv")
+    a.add_argument("--thr", type=float, default=5.0, help="tier A strength, ASSA_56/57 digits")
+    a.add_argument("--thr60", type=float, default=5.0, help="tier A strength, ASSA_60 digits")
+    a.add_argument("--out", default="candidates.csv")
+    a.set_defaults(func=cmd_candidates)
+    a = sub.add_parser("pictures")
+    a.add_argument("--candidates", default="candidates.csv")
+    a.add_argument("--tiers", default="A,B")
+    a.add_argument("--n", type=int, default=80)
+    a.add_argument("--iiib-min", type=float, default=3.0, help="also show Phase IIIb rows of any tier at this strength")
+    a.add_argument("--outdir", default="pictures")
+    a.set_defaults(func=cmd_pictures)
     args = ap.parse_args()
     args.func(args)
 
