@@ -340,6 +340,33 @@ def calibrators(days, cache):
     return have.drop_duplicates("obs_id")
 
 
+def obs_access(ids, cache):
+    """projectid and end of embargo per obsid (mwa.observation), cached in a CSV."""
+    import pyvo
+    have = pd.read_csv(cache) if os.path.exists(cache) else pd.DataFrame(
+        columns=["obs_id", "projectid", "public_release_date_utc"])
+    todo = sorted(set(int(i) for i in ids) - set(have.obs_id.astype(int)))
+    if todo:
+        tap = pyvo.dal.TAPService("https://vo.mwatelescope.org/mwa_asvo/tap")
+        parts = [have]
+        for k in range(0, len(todo), 200):
+            q = ("SELECT obs_id, projectid, public_release_date_utc FROM mwa.observation WHERE obs_id IN ("
+                 + ",".join(map(str, todo[k:k + 200])) + ")")
+            parts.append(tap.run_sync(q, maxrec=tap.hardlimit).to_table().to_pandas())
+        have = pd.concat(parts, ignore_index=True)
+        have.to_csv(cache, index=False)
+    return have.drop_duplicates("obs_id").set_index("obs_id")
+
+
+def embargoed(projectid, release, now=None):
+    """MWA Data Access Policy: data are restricted for 18 months, but guaranteed-time projects
+    (G...) are open to collaboration members at once; open-access (OA...) data go to the PI's
+    team only, engineering (C...) to MWA operations. So: blocked = still under embargo and not G."""
+    now = now or pd.Timestamp.now(tz="UTC")
+    rel = pd.to_datetime(release, utc=True, errors="coerce")
+    return (rel > now) & ~pd.Series(projectid, index=rel.index).astype(str).str.startswith("G")
+
+
 def cmd_candidates(args):
     s = pd.read_csv(args.ranking, parse_dates=["t_peak"])
     s = s[s.mwa_obs_at_peak.notna()].copy()
@@ -353,6 +380,9 @@ def cmd_candidates(args):
             "total_archived_data_bytes"]
     c = s.merge(m[keep].add_prefix("mwa_"), on="mwa_obs_id", how="left")
     c["on_calculon"] = c.mwa_obs_id.isin(read_calculon(args.calculon))
+    acc = obs_access(c.mwa_obs_id.unique(), args.access_cache)
+    c["mwa_public_release"] = c.mwa_obs_id.map(acc.public_release_date_utc).astype(str).str[:10]
+    c["embargoed"] = embargoed(c.mwa_obs_id.map(acc.projectid), c.mwa_obs_id.map(acc.public_release_date_utc)).values
     c["margin_s"] = np.minimum((c.t_peak - c.mwa_t_start).dt.total_seconds(),
                                (c.mwa_t_stop - c.t_peak).dt.total_seconds())
 
@@ -385,6 +415,7 @@ def cmd_candidates(args):
     a = strong & typed & (c.n_stations >= 3) & mwa_ok & cal_ok
     b = ~a & moderate & (c.n_stations >= 2) & (c.margin_s >= 4) & (c.mwa_total_archived_data_bytes.fillna(0) > 0)
     c["tier"] = np.select([a, b], ["A", "B"], "C")
+    c.loc[c.embargoed, "tier"] = "E"   # not downloadable for us before mwa_public_release
     c["why_not_A"] = [", ".join(k for k, ok in [("weak", st), ("untyped", ty), ("few stations", ns), ("MWA", mo),
                                                ("no calibrator", co)] if not ok)
                       for st, ty, ns, mo, co in zip(strong, typed, c.n_stations >= 3, mwa_ok, cal_ok)]
@@ -402,7 +433,8 @@ def cmd_candidates(args):
     cols = ["tier", "phase", "phase3b", "rank", "t_peak", "type", "strength", "single_rx", "n_rx", "n_stations", "mwa_obs_id",
             "on_calculon", "mwa_projectid", "mwa_t_start", "mwa_duration_s", "margin_s", "mwa_mwa_array_configuration",
             "mwa_channel_numbers_csv", "mwa_int_time", "mwa_freq_res", "mwa_good_tiles", "mwa_sun_elevation",
-            "mwa_dataqualityname", "cal_obs_id", "cal_name", "cal_dt_hr", "cal_on_calculon",
+            "mwa_dataqualityname", "embargoed", "mwa_public_release", "cal_obs_id", "cal_name", "cal_dt_hr",
+            "cal_on_calculon",
             "why_not_A", "start", "end", "stations"]
     c[cols].to_csv(args.out, index=False)
     log(f"{len(c)} candidates: " + ", ".join(f"{k} {v}" for k, v in c.tier.value_counts().sort_index().items())
@@ -469,7 +501,7 @@ def cmd_pictures(args):
     cmap = LinearSegmentedColormap.from_list(
         "b", ["#ffffff", "#cde2fb", "#86b6ef", "#3987e5", "#1c5cab", "#0d366b"])
     c = pd.read_csv(args.candidates, parse_dates=["t_peak", "mwa_t_start"])
-    keep = c.tier.isin(args.tiers.split(",")) | (c.phase3b & (c.strength >= args.iiib_min))
+    keep = (c.tier.isin(args.tiers.split(",")) | (c.phase3b & (c.strength >= args.iiib_min))) & ~c.embargoed
     c = c[keep].head(args.n)
     c["mwa_t_stop"] = c.mwa_t_start + pd.to_timedelta(c.mwa_duration_s, unit="s")
     os.makedirs(args.outdir, exist_ok=True)
@@ -569,6 +601,7 @@ def main():
     a.add_argument("--mwa", default="mwa_sun_obs.csv")
     a.add_argument("--calculon", default="calculon_obsids.txt")
     a.add_argument("--cal-cache", default="calibrators.csv")
+    a.add_argument("--access-cache", default="obs_access.csv", help="projectid and embargo end per obsid")
     a.add_argument("--thr", type=float, default=5.0, help="tier A strength, ASSA_56/57 digits")
     a.add_argument("--thr60", type=float, default=5.0, help="tier A strength, ASSA_60 digits")
     a.add_argument("--out", default="candidates.csv")

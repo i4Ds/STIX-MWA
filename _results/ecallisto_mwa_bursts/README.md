@@ -22,8 +22,12 @@ Results (2026-10-16)
   ASSA_57 both present, strength = the smaller of the two; in the ASSA_60 era
   (to December 2023) it is ASSA_60 alone (`single_rx`). `mwa_obs_at_peak` = MWA
   obs containing the ASSA peak time.
-- `candidates.csv`: one row per burst × MWA obs at the peak, 627 rows; tier A 13,
-  B 39, C 575. Tier A: strength ≥ 5, typed burst, ≥ 3 stations, MWA data
+- `candidates.csv`: one row per burst × MWA obs at the peak, 627 rows; tier A 12,
+  B 33, C 518, E 64 (19 Oct). Tier E = not downloadable for us yet: still under
+  the 18-month embargo and not a collaboration (G…) project. By the MWA Data
+  Access Policy, open-access (OA…) data go to the PI's team only during the
+  embargo; all 64 are OA004. Columns `embargoed`, `mwa_public_release`
+  (from mwa.observation, cached in `obs_access.csv`, not committed). Tier A: strength ≥ 5, typed burst, ≥ 3 stations, MWA data
   archived, Good, ≥ 56 s long, peak ≥ 8 s inside the obs, Sun elevation ≥ 30°,
   and an archived calibrator with the same channel set within 24 h.
   `why_not_A` says what a B/C row misses. Order within a tier: Phase IIIb first,
