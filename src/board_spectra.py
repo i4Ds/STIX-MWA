@@ -63,7 +63,7 @@ def product_figure(df, inst, e, p, out):
     ax.set_ylabel("MHz")
     ax.set_xlabel(f"UTC {e['date']}")
     ax.set_title(f"e-Callisto Australia-{inst}, background subtracted; MWA {e['sun']} {p['label']}: "
-                 f"{len(fr)} images, one red box each ({tres:g} s × 1.28 MHz channel); orange: MWA observation", fontsize=8.5, loc="left")
+                 f"{len(fr)} images,\none red box each ({tres:g} s × 1.28 MHz channel); orange: MWA observation", fontsize=8.5, loc="left")
     fig.savefig(out, dpi=110)
     plt.close(fig)
     print(out)
